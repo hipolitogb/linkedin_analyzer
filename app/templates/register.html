@@ -405,7 +405,7 @@ async function initBrowser() {
             }, 600);
         });
 
-        browserViewer.on('profile-extracted', (profile) => {
+        browserViewer.on('profile-extracted', async (profile) => {
             document.getElementById('reg-first-name').value = profile.first_name || '';
             document.getElementById('reg-last-name').value = profile.last_name || '';
             document.getElementById('reg-public-id').value = profile.public_id || '';
@@ -415,7 +415,29 @@ async function initBrowser() {
             if (sessionId) fetch(`/api/browser/stop/${sessionId}`, { method: 'POST' });
             if (browserViewer) browserViewer.destroy();
 
-            // Move to step 2 with a small delay for the animation
+            // Check if this LinkedIn user already has an account
+            if (profile.public_id) {
+                try {
+                    const res = await fetch('/api/auth/check-linkedin', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ linkedin_public_id: profile.public_id })
+                    });
+                    const data = await res.json();
+
+                    if (data.status === 'existing_user') {
+                        // Auto-login: set token and skip to payment step
+                        authToken = data.token;
+                        document.cookie = `session_token=${authToken}; path=/; max-age=${7*24*3600}; samesite=lax`;
+                        setTimeout(() => setStep(3), 800);
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('check-linkedin failed, continuing to registration:', e);
+                }
+            }
+
+            // New user: move to step 2 (registration form)
             setTimeout(() => setStep(2), 800);
         });
 
