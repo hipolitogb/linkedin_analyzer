@@ -723,6 +723,7 @@ def process_scraped_posts(raw_posts: list[dict]) -> list[dict]:
             "is_repost": raw.get("is_repost", False),
             "original_author": raw.get("original_author", ""),
             "reshare_comment": raw.get("reshare_comment", ""),
+            "activity_id": raw.get("activity_id", ""),
         })
 
     return processed

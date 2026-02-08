@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro - LinkedIn Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .loader { border: 3px solid #e5e7eb; border-top-color: #3b82f6; border-radius: 50%; width: 20px; height: 20px; animation: spin .8s linear infinite; display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .step-indicator.active { background-color: #3b82f6; color: white; }
+        .step-indicator.done { background-color: #10b981; color: white; }
+        .step-indicator { background-color: #374151; color: #9ca3af; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+
+<div class="max-w-3xl mx-auto px-4 py-8">
+    <div class="text-center mb-8">
+        <a href="/" class="text-2xl font-bold text-blue-400">LinkedIn Analyzer</a>
+    </div>
+
+    <!-- Step Indicators -->
+    <div class="flex items-center justify-center gap-2 mb-8">
+        <div id="step-ind-1" class="step-indicator active w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">1</div>
+        <div class="w-8 h-px bg-gray-700"></div>
+        <div id="step-ind-2" class="step-indicator w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">2</div>
+        <div class="w-8 h-px bg-gray-700"></div>
+        <div id="step-ind-3" class="step-indicator w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">3</div>
+        <div class="w-8 h-px bg-gray-700"></div>
+        <div id="step-ind-4" class="step-indicator w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">4</div>
+        <div class="w-8 h-px bg-gray-700"></div>
+        <div id="step-ind-5" class="step-indicator w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">5</div>
+    </div>
+
+    <!-- Step 1: Connect LinkedIn -->
+    <div id="step-1" class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+        <h2 class="text-xl font-semibold mb-2">Paso 1: Conectá tu LinkedIn</h2>
+        <p class="text-sm text-gray-400 mb-4">Logueate en LinkedIn en el visor de abajo. Tus credenciales nunca se guardan — solo extraemos las cookies de sesión temporal.</p>
+
+        <div id="browser-container" class="mb-4">
+            <div class="bg-gray-800 rounded-lg overflow-hidden border border-gray-700">
+                <canvas id="browser-canvas" class="w-full" style="min-height: 400px; max-height: 600px;"></canvas>
+            </div>
+            <div id="browser-status" class="text-sm text-gray-400 mt-2"></div>
+        </div>
+
+        <div class="flex gap-3">
+            <button id="btn-start-browser" onclick="startBrowser()" class="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-lg text-sm font-medium transition">
+                Iniciar navegador
+            </button>
+            <button id="btn-extract" onclick="extractData()" disabled class="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed px-5 py-2 rounded-lg text-sm font-medium transition">
+                Ya me logueé — Extraer datos
+            </button>
+        </div>
+    </div>
+
+    <!-- Step 2: Personal Info -->
+    <div id="step-2" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
+        <h2 class="text-xl font-semibold mb-2">Paso 2: Tus datos</h2>
+        <p class="text-sm text-gray-400 mb-4">Completamos algunos datos desde tu perfil de LinkedIn. Verificalos y completá el resto.</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Nombre</label>
+                <input id="reg-first-name" type="text" required class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Apellido</label>
+                <input id="reg-last-name" type="text" required class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Email</label>
+                <input id="reg-email" type="email" required class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500" placeholder="tu@email.com">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Teléfono (opcional)</label>
+                <input id="reg-phone" type="tel" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500" placeholder="+54 11...">
+            </div>
+        </div>
+        <input id="reg-public-id" type="hidden">
+        <input id="reg-profile-url" type="hidden">
+
+        <div id="reg-error" class="hidden text-sm text-red-400 mb-3"></div>
+
+        <button onclick="submitRegistration()" class="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-lg text-sm font-medium transition">
+            Continuar
+        </button>
+    </div>
+
+    <!-- Step 3: Payment -->
+    <div id="step-3" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
+        <h2 class="text-xl font-semibold mb-2">Paso 3: Activá tu análisis</h2>
+        <p class="text-sm text-gray-400 mb-6">Elegí cómo pagar. Cada activación te permite extraer hasta 3 meses de posts.</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <!-- Invitation Code -->
+            <div class="bg-gray-800/50 rounded-lg p-5 border border-gray-700">
+                <h3 class="text-sm font-semibold text-emerald-400 mb-3">Código de invitación</h3>
+                <p class="text-xs text-gray-400 mb-3">Si tenés un código, ingresalo acá para acceso gratuito.</p>
+                <input id="inv-code" type="text" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 mb-3" placeholder="CODIGO123">
+                <button onclick="redeemCode()" class="bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-lg text-sm font-medium transition w-full">
+                    Canjear código
+                </button>
+            </div>
+
+            <!-- Mock Payment -->
+            <div class="bg-gray-800/50 rounded-lg p-5 border border-gray-700">
+                <h3 class="text-sm font-semibold text-blue-400 mb-3">Pago USD $5</h3>
+                <p class="text-xs text-gray-400 mb-3">Pago único por extracción. Desbloquea hasta 3 meses de datos.</p>
+                <div class="bg-gray-800 rounded-lg p-3 mb-3 text-center">
+                    <span class="text-2xl font-bold text-white">$5</span>
+                    <span class="text-gray-400 text-sm"> USD</span>
+                </div>
+                <button onclick="mockPayment()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg text-sm font-medium transition w-full">
+                    Pagar $5 USD
+                </button>
+            </div>
+        </div>
+
+        <div id="payment-status" class="text-sm text-gray-400"></div>
+    </div>
+
+    <!-- Step 4: Date Range -->
+    <div id="step-4" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
+        <h2 class="text-xl font-semibold mb-2">Paso 4: Elegí el rango de fechas</h2>
+        <p class="text-sm text-gray-400 mb-4">Seleccioná el período que querés analizar. Máximo 3 meses, hasta 1 año atrás.</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Desde</label>
+                <input id="scrape-from" type="date" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Hasta</label>
+                <input id="scrape-to" type="date" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
+            </div>
+        </div>
+
+        <div id="date-validation" class="text-sm text-yellow-400 mb-3 hidden"></div>
+
+        <button id="btn-start-scrape" onclick="startScraping()" class="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-lg text-sm font-medium transition">
+            Iniciar extracción
+        </button>
+    </div>
+
+    <!-- Step 5: Scraping Progress -->
+    <div id="step-5" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
+        <h2 class="text-xl font-semibold mb-2">Paso 5: Extrayendo datos</h2>
+        <p class="text-sm text-gray-400 mb-4">Estamos extrayendo tus publicaciones de LinkedIn. Esto puede tardar unos minutos.</p>
+
+        <div class="mb-6">
+            <div class="flex items-center gap-3 text-sm text-gray-400 mb-2">
+                <span id="scrape-loader" class="loader"></span>
+                <span id="scrape-progress-text">Iniciando extracción...</span>
+            </div>
+            <div class="w-full bg-gray-800 rounded-full h-2">
+                <div id="scrape-progress-bar" class="bg-blue-500 h-2 rounded-full transition-all duration-500" style="width: 10%"></div>
+            </div>
+        </div>
+
+        <div id="scrape-result" class="hidden">
+            <div class="bg-emerald-900/20 border border-emerald-800/30 rounded-lg p-4 mb-4">
+                <p class="text-emerald-300 font-semibold mb-1" id="scrape-result-text"></p>
+                <p class="text-sm text-gray-400" id="scrape-result-detail"></p>
+            </div>
+            <a href="/dashboard" class="inline-block bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg text-sm font-medium transition">
+                Ir al Dashboard
+            </a>
+        </div>
+    </div>
+</div>
+
+<script src="/static/js/browser-viewer.js"></script>
+<script>
+let browserViewer = null;
+let sessionId = null;
+let encryptedCookies = null;
+let paymentId = null;
+let authToken = null;
+
+// Auth helper
+function getAuthHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+    return headers;
+}
+
+function setStep(step) {
+    for (let i = 1; i <= 5; i++) {
+        document.getElementById(`step-${i}`).classList.toggle('hidden', i !== step);
+        const ind = document.getElementById(`step-ind-${i}`);
+        ind.classList.remove('active', 'done');
+        if (i < step) ind.classList.add('done');
+        else if (i === step) ind.classList.add('active');
+    }
+}
+
+// Step 1: Browser
+async function startBrowser() {
+    const btn = document.getElementById('btn-start-browser');
+    btn.disabled = true;
+    btn.textContent = 'Iniciando...';
+    document.getElementById('browser-status').innerHTML = '<span class="loader"></span> Preparando navegador...';
+
+    try {
+        const res = await fetch('/api/browser/start', { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'ok') {
+            sessionId = data.session_id;
+            const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${wsProto}//${location.host}/ws/browser/${sessionId}`;
+            const canvas = document.getElementById('browser-canvas');
+            browserViewer = new BrowserViewer(canvas, wsUrl);
+
+            browserViewer.on('connected', () => {
+                document.getElementById('browser-status').textContent = 'Navegador listo. Logueate en LinkedIn y hacé click en "Extraer datos".';
+                document.getElementById('btn-extract').disabled = false;
+                btn.textContent = 'Navegador activo';
+            });
+
+            browserViewer.on('cookies-extracted', (data) => {
+                encryptedCookies = data.encrypted;
+                document.getElementById('browser-status').innerHTML =
+                    '<span class="text-emerald-400">Cookies extraídas correctamente.</span> Extrayendo perfil...';
+                browserViewer.extractProfile();
+            });
+
+            browserViewer.on('profile-extracted', (profile) => {
+                document.getElementById('reg-first-name').value = profile.first_name || '';
+                document.getElementById('reg-last-name').value = profile.last_name || '';
+                document.getElementById('reg-public-id').value = profile.public_id || '';
+                document.getElementById('reg-profile-url').value = profile.profile_url || '';
+
+                // Stop browser
+                if (sessionId) {
+                    fetch(`/api/browser/stop/${sessionId}`, { method: 'POST' });
+                }
+                if (browserViewer) browserViewer.destroy();
+
+                setStep(2);
+            });
+
+            browserViewer.on('error', (err) => {
+                document.getElementById('browser-status').innerHTML =
+                    `<span class="text-red-400">${err.message}</span>`;
+            });
+
+            browserViewer.on('disconnected', () => {
+                document.getElementById('browser-status').textContent = 'Conexión perdida.';
+            });
+        } else {
+            document.getElementById('browser-status').textContent = `Error: ${data.message}`;
+            btn.disabled = false;
+            btn.textContent = 'Reintentar';
+        }
+    } catch (e) {
+        document.getElementById('browser-status').textContent = `Error: ${e.message}`;
+        btn.disabled = false;
+        btn.textContent = 'Reintentar';
+    }
+}
+
+function extractData() {
+    if (browserViewer) {
+        document.getElementById('browser-status').innerHTML = '<span class="loader"></span> Extrayendo cookies...';
+        browserViewer.extractCookies();
+    }
+}
+
+// Step 2: Registration
+async function submitRegistration() {
+    const errorEl = document.getElementById('reg-error');
+    errorEl.classList.add('hidden');
+
+    const body = {
+        first_name: document.getElementById('reg-first-name').value.trim(),
+        last_name: document.getElementById('reg-last-name').value.trim(),
+        email: document.getElementById('reg-email').value.trim(),
+        phone: document.getElementById('reg-phone').value.trim(),
+        linkedin_public_id: document.getElementById('reg-public-id').value,
+        linkedin_profile_url: document.getElementById('reg-profile-url').value,
+    };
+
+    if (!body.first_name || !body.last_name || !body.email) {
+        errorEl.textContent = 'Completá nombre, apellido y email.';
+        errorEl.classList.remove('hidden');
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+
+        if (data.status === 'ok') {
+            authToken = data.token;
+            // Set cookie for future page navigations
+            document.cookie = `session_token=${authToken}; path=/; max-age=${7*24*3600}; samesite=lax`;
+            setStep(3);
+        } else if (data.status === 'existing_user') {
+            errorEl.textContent = data.message + ' Podés ir a iniciar sesión.';
+            errorEl.classList.remove('hidden');
+        } else {
+            errorEl.textContent = data.message || 'Error al registrar.';
+            errorEl.classList.remove('hidden');
+        }
+    } catch (e) {
+        errorEl.textContent = `Error: ${e.message}`;
+        errorEl.classList.remove('hidden');
+    }
+}
+
+// Step 3: Payment
+async function redeemCode() {
+    const code = document.getElementById('inv-code').value.trim();
+    if (!code) { showPaymentStatus('Ingresá un código.', true); return; }
+
+    try {
+        const res = await fetch('/api/payments/redeem-code', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ code })
+        });
+        const data = await res.json();
+        if (data.status === 'ok') {
+            paymentId = data.payment_id;
+            showPaymentStatus(data.message);
+            setupDateRange();
+            setStep(4);
+        } else {
+            const errMsg = typeof data.detail === 'string' ? data.detail
+                : Array.isArray(data.detail) ? data.detail.map(d => d.msg).join(', ')
+                : data.message || 'Código inválido.';
+            showPaymentStatus(errMsg, true);
+        }
+    } catch (e) {
+        showPaymentStatus(`Error: ${e.message}`, true);
+    }
+}
+
+async function mockPayment() {
+    try {
+        const res = await fetch('/api/payments/mock-pay', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ amount_usd: 5.0 })
+        });
+        const data = await res.json();
+        if (data.status === 'ok') {
+            paymentId = data.payment_id;
+            showPaymentStatus(data.message);
+            setupDateRange();
+            setStep(4);
+        } else {
+            showPaymentStatus(data.detail || data.message || 'Error en el pago.', true);
+        }
+    } catch (e) {
+        showPaymentStatus(`Error: ${e.message}`, true);
+    }
+}
+
+function showPaymentStatus(msg, isError = false) {
+    const el = document.getElementById('payment-status');
+    el.textContent = msg;
+    el.className = `text-sm ${isError ? 'text-red-400' : 'text-emerald-400'}`;
+}
+
+// Step 4: Date Range
+function setupDateRange() {
+    const today = new Date();
+    const threeMonthsAgo = new Date(today);
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+
+    document.getElementById('scrape-to').value = today.toISOString().slice(0, 10);
+    document.getElementById('scrape-from').value = threeMonthsAgo.toISOString().slice(0, 10);
+
+    // Validate on change
+    const validate = () => {
+        const from = new Date(document.getElementById('scrape-from').value);
+        const to = new Date(document.getElementById('scrape-to').value);
+        const diffDays = (to - from) / (1000 * 60 * 60 * 24);
+        const daysBack = (today - from) / (1000 * 60 * 60 * 24);
+        const el = document.getElementById('date-validation');
+
+        if (diffDays > 93) {
+            el.textContent = 'El rango máximo es de 3 meses (93 días).';
+            el.classList.remove('hidden');
+            document.getElementById('btn-start-scrape').disabled = true;
+        } else if (daysBack > 365) {
+            el.textContent = 'No se puede ir más de 1 año atrás.';
+            el.classList.remove('hidden');
+            document.getElementById('btn-start-scrape').disabled = true;
+        } else {
+            el.classList.add('hidden');
+            document.getElementById('btn-start-scrape').disabled = false;
+        }
+    };
+    document.getElementById('scrape-from').addEventListener('change', validate);
+    document.getElementById('scrape-to').addEventListener('change', validate);
+}
+
+// Step 5: Scraping
+async function startScraping() {
+    setStep(5);
+
+    const fromDate = document.getElementById('scrape-from').value;
+    const toDate = document.getElementById('scrape-to').value;
+
+    try {
+        const res = await fetch('/api/scrape/start', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+                payment_id: paymentId,
+                from_date: fromDate,
+                to_date: toDate,
+                encrypted_cookies: encryptedCookies,
+                public_id: document.getElementById('reg-public-id').value || 'unknown',
+            })
+        });
+        const data = await res.json();
+
+        if (data.status === 'ok') {
+            pollScrapeStatus(data.scrape_session_id);
+        } else {
+            const errMsg = typeof data.detail === 'string' ? data.detail
+                : Array.isArray(data.detail) ? data.detail.map(d => d.msg).join(', ')
+                : data.message || 'Error desconocido';
+            document.getElementById('scrape-progress-text').textContent = `Error: ${errMsg}`;
+            document.getElementById('scrape-loader').style.display = 'none';
+        }
+    } catch (e) {
+        document.getElementById('scrape-progress-text').textContent = `Error: ${e.message}`;
+        document.getElementById('scrape-loader').classList.add('hidden');
+    }
+}
+
+async function pollScrapeStatus(scrapeSessionId) {
+    const poll = async () => {
+        try {
+            const res = await fetch(`/api/scrape/status/${scrapeSessionId}`, {
+                headers: getAuthHeaders()
+            });
+            const data = await res.json();
+
+            const scrapeStatus = data.scrape_status || data.status;
+
+            if (scrapeStatus === 'completed') {
+                document.getElementById('scrape-loader').style.display = 'none';
+                document.getElementById('scrape-progress-bar').style.width = '100%';
+                const count = data.posts_scraped || 0;
+                if (count > 0) {
+                    document.getElementById('scrape-progress-text').textContent = 'Extracción completada.';
+                    document.getElementById('scrape-result-text').textContent =
+                        `Se extrajeron ${count} publicaciones.`;
+                } else {
+                    document.getElementById('scrape-progress-text').textContent = 'Extracción completada sin resultados.';
+                    document.getElementById('scrape-result-text').textContent =
+                        'No se encontraron publicaciones en el rango seleccionado.';
+                }
+                document.getElementById('scrape-result').classList.remove('hidden');
+                document.getElementById('scrape-result-detail').textContent =
+                    `Período: ${data.from_date || ''} a ${data.to_date || ''}`;
+                return;
+            } else if (scrapeStatus === 'failed') {
+                document.getElementById('scrape-loader').style.display = 'none';
+                document.getElementById('scrape-progress-text').textContent =
+                    `Error: ${data.error_message || 'La extracción falló.'}`;
+                document.getElementById('scrape-progress-bar').classList.replace('bg-blue-500', 'bg-red-500');
+                return;
+            } else {
+                // Still scraping (pending/scraping)
+                const scraped = data.posts_scraped || 0;
+                document.getElementById('scrape-progress-text').textContent =
+                    `Extrayendo... ${scraped} posts encontrados hasta ahora.`;
+                if (scraped > 0) {
+                    document.getElementById('scrape-progress-bar').style.width = '50%';
+                }
+                setTimeout(poll, 3000);
+            }
+        } catch (e) {
+            setTimeout(poll, 5000);
+        }
+    };
+    setTimeout(poll, 2000);
+}
+</script>
+</body>
+</html>

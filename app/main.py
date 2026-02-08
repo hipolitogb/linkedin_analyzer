@@ -10,12 +10,20 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from app.linkedin_client import load_posts_from_backup
 from app.scraper import scrape_profile_posts, process_scraped_posts
 from app.analyzer import classify_posts, deep_pattern_analysis, compute_metrics, save_dashboard, load_dashboard
+from app.database import init_db
+from app.routers import auth as auth_router
+from app.routers import browser as browser_router
+from app.routers import payments as payments_router
+from app.routers import admin as admin_router
+from app.routers import scraping as scraping_router
+from app.routers import dashboard as dashboard_router
 
 load_dotenv()
 
@@ -23,7 +31,21 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="LinkedIn Post Analyzer")
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
+
+# Register routers
+app.include_router(auth_router.router)
+app.include_router(browser_router.router)
+app.include_router(payments_router.router)
+app.include_router(admin_router.router)
+app.include_router(scraping_router.router)
+app.include_router(dashboard_router.router)
+
+
+@app.on_event("startup")
+async def startup():
+    await init_db()
 
 UPLOAD_DIR = Path("/tmp/linkedin_backups")
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -94,8 +116,28 @@ def _list_saved_files() -> list[dict]:
 
 
 @app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request):
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+async def landing(request: Request):
+    return templates.TemplateResponse("landing.html", {"request": request})
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
+
+
+@app.get("/register", response_class=HTMLResponse)
+async def register_page(request: Request):
+    return templates.TemplateResponse("register.html", {"request": request})
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_page(request: Request):
+    return templates.TemplateResponse("user_dashboard.html", {"request": request})
+
+
+@app.get("/legacy", response_class=HTMLResponse)
+async def legacy_dashboard(request: Request):
+    return templates.TemplateResponse("dashboard_legacy.html", {"request": request})
 
 
 @app.get("/api/config")
