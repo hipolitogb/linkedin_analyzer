@@ -748,6 +748,12 @@ def compute_metrics(posts: list[dict]) -> dict:
     if not posts:
         return {}
 
+    # ── Filter out reposts: use only original posts for metrics ──
+    all_posts = posts
+    originals = [p for p in posts if not p.get("is_repost", False)]
+    reposts = [p for p in posts if p.get("is_repost", False)]
+    posts = originals if originals else all_posts
+
     has_engagement = any(p.get("engagement", 0) > 0 for p in posts)
 
     posts_by_month = Counter()
@@ -808,6 +814,7 @@ def compute_metrics(posts: list[dict]) -> dict:
     }
 
     # All posts data for drill-down filtering from charts
+    # Include ALL posts (originals + reposts) so UI can show/filter them
     all_posts_data = [
         {
             "text": p["text"][:200] + ("..." if len(p["text"]) > 200 else ""),
@@ -825,8 +832,10 @@ def compute_metrics(posts: list[dict]) -> dict:
             "text_length": p.get("text_length", len(p.get("text", ""))),
             "url": p.get("url", ""),
             "topics": p.get("topics", []),
+            "is_repost": p.get("is_repost", False),
+            "original_author": p.get("original_author", ""),
         }
-        for p in posts
+        for p in all_posts
     ]
 
     top_posts = sorted(posts, key=lambda x: x.get("engagement", 0), reverse=True)[:20]
@@ -842,6 +851,8 @@ def compute_metrics(posts: list[dict]) -> dict:
             "content_type": p.get("content_type", "text"),
             "category": p.get("category", ""),
             "url": p.get("url", ""),
+            "is_repost": p.get("is_repost", False),
+            "original_author": p.get("original_author", ""),
         }
         for p in top_posts
     ]
@@ -970,6 +981,7 @@ def compute_metrics(posts: list[dict]) -> dict:
 
     result = {
         "total_posts": len(posts),
+        "total_reposts": len(reposts),
         "total_reactions": sum(p.get("reactions", 0) for p in posts),
         "total_comments": sum(p.get("comments", 0) for p in posts),
         "avg_engagement": round(sum(p.get("engagement", 0) for p in posts) / len(posts), 1),
