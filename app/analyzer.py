@@ -34,6 +34,18 @@ def _safe_median(values: list) -> float:
     return float(median(values))
 
 
+def _detect_outliers(engagements: list) -> tuple[list, int, float]:
+    """Return (clean_values, outlier_count, threshold) using IQR × 3."""
+    if len(engagements) < 4:
+        return engagements, 0, 0.0
+    arr = np.array(engagements, dtype=float)
+    q1, q3 = float(np.percentile(arr, 25)), float(np.percentile(arr, 75))
+    iqr = q3 - q1
+    threshold = q3 + 3 * iqr
+    mask = arr <= threshold
+    return arr[mask].tolist(), int((~mask).sum()), round(threshold, 1)
+
+
 _EMOJI_PATTERN = re.compile(
     "[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF"
     "\U0001F1E0-\U0001F1FF\U00002702-\U000027B0\U0001FA00-\U0001FA6F"
@@ -99,12 +111,11 @@ def _compute_deep_stats(posts: list[dict]) -> dict:
     engagements = np.array([p.get("engagement", 0) for p in posts], dtype=float)
 
     # ── C1: Outlier detection (IQR method) ──
-    outlier_mask = np.zeros(len(engagements), dtype=bool)
-    if len(engagements) >= 4:
-        q1_val, q3_val = float(np.percentile(engagements, 25)), float(np.percentile(engagements, 75))
-        iqr = q3_val - q1_val
-        threshold = q3_val + 3 * iqr
-        outlier_mask = engagements > threshold
+    eng_list = engagements.tolist()
+    clean_eng_list, outlier_count, threshold = _detect_outliers(eng_list)
+    outlier_mask = engagements > threshold if outlier_count > 0 else np.zeros(len(engagements), dtype=bool)
+
+    if outlier_count > 0:
         outlier_indices = [int(i) for i in np.where(outlier_mask)[0]]
         outlier_posts = [
             {
@@ -116,11 +127,11 @@ def _compute_deep_stats(posts: list[dict]) -> dict:
             }
             for i in outlier_indices
         ]
-        clean_eng = engagements[~outlier_mask]
+        clean_eng = np.array(clean_eng_list, dtype=float)
 
         result["outliers"] = {
-            "threshold": round(threshold, 1),
-            "count": int(outlier_mask.sum()),
+            "threshold": threshold,
+            "count": outlier_count,
             "posts": outlier_posts,
             "with_outliers": {
                 "mean": round(float(np.mean(engagements)), 1),
@@ -964,20 +975,33 @@ def compute_metrics(posts: list[dict]) -> dict:
 
     has_engagement = any(p.get("engagement", 0) > 0 for p in posts)
 
+    # ── Outlier detection: filter extreme engagement values ──
+    all_engagements = [p.get("engagement", 0) for p in posts]
+    _, outlier_count, outlier_threshold = _detect_outliers(all_engagements)
+    if outlier_count > 0:
+        eng_arr = np.array(all_engagements, dtype=float)
+        clean_mask = eng_arr <= outlier_threshold
+        clean_posts = [p for p, keep in zip(posts, clean_mask) if keep]
+    else:
+        clean_posts = posts
+
+    # ── Per-month: counts from all posts, engagement medians from clean ──
     posts_by_month = Counter()
-    engagement_by_month = Counter()
     impressions_by_month = Counter()
     month_counts = Counter()
+    engagement_values_by_month: dict[str, list] = {}
     for p in posts:
         key = p["date"].strftime("%Y-%m")
         posts_by_month[key] += 1
-        engagement_by_month[key] += p.get("engagement", 0)
         impressions_by_month[key] += p.get("impressions", 0)
         month_counts[key] += 1
+    for p in clean_posts:
+        key = p["date"].strftime("%Y-%m")
+        engagement_values_by_month.setdefault(key, []).append(p.get("engagement", 0))
     sorted_months = sorted(posts_by_month.keys())
 
-    avg_engagement_by_month = {
-        m: round(engagement_by_month[m] / month_counts[m], 1) if month_counts[m] else 0
+    median_engagement_by_month = {
+        m: round(_safe_median(engagement_values_by_month.get(m, [])), 1)
         for m in sorted_months
     }
     avg_impressions_by_month = {
@@ -992,33 +1016,31 @@ def compute_metrics(posts: list[dict]) -> dict:
 
     day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     posts_by_day = Counter()
-    engagement_by_day = Counter()
-    day_counts = Counter()
+    engagement_values_by_day: dict[int, list] = {}
     for p in posts:
         d = p["date"].weekday()
         posts_by_day[d] += 1
-        engagement_by_day[d] += p.get("engagement", 0)
-        day_counts[d] += 1
+    for p in clean_posts:
+        d = p["date"].weekday()
+        engagement_values_by_day.setdefault(d, []).append(p.get("engagement", 0))
 
     posts_by_hour = Counter()
-    engagement_by_hour = Counter()
-    hour_counts = Counter()
+    engagement_values_by_hour: dict[int, list] = {}
     for p in posts:
         h = p["date"].hour
         posts_by_hour[h] += 1
-        engagement_by_hour[h] += p.get("engagement", 0)
-        hour_counts[h] += 1
+    for p in clean_posts:
+        h = p["date"].hour
+        engagement_values_by_hour.setdefault(h, []).append(p.get("engagement", 0))
 
     content_types = Counter(p.get("content_type", "text") for p in posts)
 
-    eng_by_type = {}
-    type_counts = Counter()
-    for p in posts:
+    eng_values_by_type: dict[str, list] = {}
+    for p in clean_posts:
         ct = p.get("content_type", "text")
-        eng_by_type[ct] = eng_by_type.get(ct, 0) + p.get("engagement", 0)
-        type_counts[ct] += 1
-    avg_eng_by_type = {
-        ct: round(eng_by_type[ct] / type_counts[ct], 1) for ct in eng_by_type
+        eng_values_by_type.setdefault(ct, []).append(p.get("engagement", 0))
+    median_eng_by_type = {
+        ct: round(_safe_median(vals), 1) for ct, vals in eng_values_by_type.items()
     }
 
     # All posts data for drill-down filtering from charts
@@ -1065,10 +1087,12 @@ def compute_metrics(posts: list[dict]) -> dict:
         for p in top_posts
     ]
 
-    with_img = [p for p in posts if p.get("has_image")]
-    without_img = [p for p in posts if not p.get("has_image")]
-    avg_eng_with = round(sum(p.get("engagement", 0) for p in with_img) / len(with_img), 1) if with_img else 0
-    avg_eng_without = round(sum(p.get("engagement", 0) for p in without_img) / len(without_img), 1) if without_img else 0
+    with_img_all = [p for p in posts if p.get("has_image")]
+    without_img_all = [p for p in posts if not p.get("has_image")]
+    with_img_clean = [p for p in clean_posts if p.get("has_image")]
+    without_img_clean = [p for p in clean_posts if not p.get("has_image")]
+    median_eng_with = round(_safe_median([p.get("engagement", 0) for p in with_img_clean]), 1)
+    median_eng_without = round(_safe_median([p.get("engagement", 0) for p in without_img_clean]), 1)
 
     image_types = Counter(p.get("image_type", "none") for p in posts if p.get("image_type") != "none")
     categories = Counter(p.get("category", "other") for p in posts)
@@ -1135,7 +1159,7 @@ def compute_metrics(posts: list[dict]) -> dict:
 
     # ── C. Day x Hour Heatmap ──
     heatmap_eng: dict[tuple[int, int], list] = {}
-    for p in posts:
+    for p in clean_posts:
         key = (p["date"].weekday(), p["date"].hour)
         heatmap_eng.setdefault(key, []).append(p.get("engagement", 0))
 
@@ -1144,10 +1168,10 @@ def compute_metrics(posts: list[dict]) -> dict:
     for wd in range(7):
         for hr in range(24):
             vals = heatmap_eng.get((wd, hr), [])
-            avg = round(sum(vals) / len(vals), 1) if vals else 0
-            heatmap_data.append({"day": wd, "hour": hr, "value": avg})
-            if avg > heatmap_max:
-                heatmap_max = avg
+            med = round(_safe_median(vals), 1)
+            heatmap_data.append({"day": wd, "hour": hr, "value": med})
+            if med > heatmap_max:
+                heatmap_max = med
 
     day_hour_heatmap = {
         "data": heatmap_data,
@@ -1160,8 +1184,10 @@ def compute_metrics(posts: list[dict]) -> dict:
     awareness_posts = funnel_data.get("awareness", [])
     conversion_posts = funnel_data.get("conversion", [])
 
-    awareness_engs = [p.get("engagement", 0) for p in awareness_posts]
-    avg_eng_no_link = round(sum(awareness_engs) / len(awareness_engs), 1) if awareness_engs else 0
+    # Filter awareness posts through clean_posts for median calculation
+    clean_set = set(id(p) for p in clean_posts)
+    awareness_engs_clean = [p.get("engagement", 0) for p in awareness_posts if id(p) in clean_set]
+    median_eng_no_link = round(_safe_median(awareness_engs_clean), 1)
 
     conv_reactions = sum(p.get("reactions", 0) for p in conversion_posts)
     conv_comments = sum(p.get("comments", 0) for p in conversion_posts)
@@ -1174,7 +1200,7 @@ def compute_metrics(posts: list[dict]) -> dict:
     strategic_cards = {
         "alcance": {
             "total_impressions": total_impressions,
-            "avg_engagement_no_link": avg_eng_no_link,
+            "median_engagement_no_link": median_eng_no_link,
         },
         "negocio": {
             "conversation_ratio": conv_ratio,
@@ -1192,7 +1218,9 @@ def compute_metrics(posts: list[dict]) -> dict:
         "total_reposts": len(reposts),
         "total_reactions": sum(p.get("reactions", 0) for p in posts),
         "total_comments": sum(p.get("comments", 0) for p in posts),
-        "avg_engagement": round(sum(p.get("engagement", 0) for p in posts) / len(posts), 1),
+        "median_engagement": round(_safe_median([p.get("engagement", 0) for p in clean_posts]), 1),
+        "outlier_count": outlier_count,
+        "outlier_threshold": outlier_threshold,
         "total_impressions": sum(p.get("impressions", 0) for p in posts),
         "posts_by_month": {
             "labels": sorted_months,
@@ -1244,25 +1272,25 @@ def compute_metrics(posts: list[dict]) -> dict:
     if has_engagement:
         result["engagement_evolution"] = {
             "labels": sorted_months,
-            "values": [avg_engagement_by_month[m] for m in sorted_months],
+            "values": [median_engagement_by_month[m] for m in sorted_months],
             "impressions": [avg_impressions_by_month[m] for m in sorted_months],
         }
         result["posts_by_day"]["avg_engagement"] = [
-            round(engagement_by_day[i] / day_counts[i], 1) if day_counts[i] else 0
+            round(_safe_median(engagement_values_by_day.get(i, [])), 1)
             for i in range(7)
         ]
         result["posts_by_hour"]["avg_engagement"] = [
-            round(engagement_by_hour[h] / hour_counts[h], 1) if hour_counts[h] else 0
+            round(_safe_median(engagement_values_by_hour.get(h, [])), 1)
             for h in range(24)
         ]
         result["engagement_by_type"] = {
-            "labels": list(avg_eng_by_type.keys()),
-            "values": list(avg_eng_by_type.values()),
+            "labels": list(median_eng_by_type.keys()),
+            "values": list(median_eng_by_type.values()),
         }
         result["image_engagement"] = {
             "labels": ["With Image", "Without Image"],
-            "values": [avg_eng_with, avg_eng_without],
-            "counts": [len(with_img), len(without_img)],
+            "values": [median_eng_with, median_eng_without],
+            "counts": [len(with_img_all), len(without_img_all)],
         }
 
     return result
