@@ -129,6 +129,20 @@ async def browser_websocket(websocket: WebSocket, session_id: str):
                     screenshot = await browser_manager.take_screenshot(session_id)
                     await websocket.send_json({"type": "screenshot", "data": screenshot})
 
+                elif msg_type == "check_login":
+                    cookies = await browser_manager.extract_cookies(session_id)
+                    if cookies:
+                        encrypted = encrypt_cookies(cookies)
+                        await websocket.send_json({
+                            "type": "login_detected",
+                            "encrypted": encrypted,
+                        })
+                    else:
+                        await websocket.send_json({
+                            "type": "login_status",
+                            "status": "waiting",
+                        })
+
                 elif msg_type == "extract_cookies":
                     cookies = await browser_manager.extract_cookies(session_id)
                     if cookies:

@@ -3,172 +3,303 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Registro - LinkedIn Analyzer</title>
+    <title>Comenzar - LinkedIn Analyzer</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { 50: '#eef4ff', 100: '#d9e6ff', 200: '#bcd4fe', 300: '#8eb8fd', 400: '#5993fa', 500: '#3b6cf5', 600: '#254bea', 700: '#1d3ad7', 800: '#1e31ae', 900: '#1e2e89' },
+                        surface: { 50: '#f8fafc', 100: '#f1f5f9', 800: '#1e1e2e', 850: '#181825', 900: '#11111b', 950: '#0a0a14' },
+                    }
+                }
+            }
+        }
+    </script>
     <style>
-        .loader { border: 3px solid #e5e7eb; border-top-color: #3b82f6; border-radius: 50%; width: 20px; height: 20px; animation: spin .8s linear infinite; display: inline-block; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+
+        /* Animations */
         @keyframes spin { to { transform: rotate(360deg); } }
-        .step-indicator.active { background-color: #3b82f6; color: white; }
-        .step-indicator.done { background-color: #10b981; color: white; }
-        .step-indicator { background-color: #374151; color: #9ca3af; }
+        @keyframes pulse-ring { 0% { transform: scale(0.9); opacity: 1; } 100% { transform: scale(1.6); opacity: 0; } }
+        @keyframes fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slide-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes shimmer { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
+        @keyframes check-draw { 0% { stroke-dashoffset: 32; } 100% { stroke-dashoffset: 0; } }
+        @keyframes scale-in { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+        .animate-fade-in { animation: fade-in 0.4s ease-out forwards; }
+        .animate-slide-up { animation: slide-up 0.5s ease-out forwards; }
+        .animate-scale-in { animation: scale-in 0.3s ease-out forwards; }
+
+        .loader-ring { width: 20px; height: 20px; border: 2.5px solid rgba(255,255,255,0.15); border-top-color: #3b6cf5; border-radius: 50%; animation: spin 0.7s linear infinite; }
+        .loader-ring-sm { width: 16px; height: 16px; }
+
+        .pulse-dot { position: relative; }
+        .pulse-dot::before { content: ''; position: absolute; inset: -4px; border-radius: 50%; background: currentColor; opacity: 0.3; animation: pulse-ring 1.5s ease-out infinite; }
+
+        .shimmer-text {
+            background: linear-gradient(90deg, #94a3b8 25%, #e2e8f0 50%, #94a3b8 75%);
+            background-size: 200% auto;
+            -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+            animation: shimmer 2s linear infinite;
+        }
+
+        .check-anim { stroke-dasharray: 32; stroke-dashoffset: 32; animation: check-draw 0.4s ease-out 0.1s forwards; }
+
+        /* Step indicator */
+        .step-pip { transition: all 0.3s ease; }
+        .step-pip.active { background-color: #3b6cf5; box-shadow: 0 0 0 4px rgba(59,108,245,0.2); }
+        .step-pip.done { background-color: #10b981; }
+        .step-connector { transition: background-color 0.3s ease; }
+        .step-connector.done { background-color: #10b981; }
+
+        /* Browser viewer */
+        #browser-canvas { border-radius: 8px; }
+
+        /* Card hover */
+        .card-surface { background: linear-gradient(145deg, rgba(30,30,46,0.8), rgba(24,24,37,0.9)); backdrop-filter: blur(8px); }
+
+        /* Smooth transitions for step content */
+        .step-content { transition: opacity 0.3s ease, transform 0.3s ease; }
+
+        /* Status badge */
+        .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
     </style>
 </head>
-<body class="bg-gray-950 text-gray-100 min-h-screen">
+<body class="bg-surface-950 text-gray-100 min-h-screen">
 
-<div class="max-w-3xl mx-auto px-4 py-8">
-    <div class="text-center mb-8">
-        <a href="/" class="text-2xl font-bold text-blue-400">LinkedIn Analyzer</a>
+<!-- Top bar -->
+<nav class="border-b border-white/5 bg-surface-950/80 backdrop-blur-md sticky top-0 z-50">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+        <a href="/" class="text-lg font-bold tracking-tight text-white">LinkedIn<span class="text-brand-500">Analyzer</span></a>
+        <a href="/login" class="text-sm text-gray-400 hover:text-white transition">Iniciar sesion</a>
     </div>
+</nav>
 
-    <!-- Step Indicators -->
-    <div class="flex items-center justify-center gap-2 mb-8">
-        <div id="step-ind-1" class="step-indicator active w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">1</div>
-        <div class="w-8 h-px bg-gray-700"></div>
-        <div id="step-ind-2" class="step-indicator w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">2</div>
-        <div class="w-8 h-px bg-gray-700"></div>
-        <div id="step-ind-3" class="step-indicator w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">3</div>
-        <div class="w-8 h-px bg-gray-700"></div>
-        <div id="step-ind-4" class="step-indicator w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">4</div>
-        <div class="w-8 h-px bg-gray-700"></div>
-        <div id="step-ind-5" class="step-indicator w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">5</div>
-    </div>
+<div class="max-w-3xl mx-auto px-6 py-10">
 
-    <!-- Step 1: Connect LinkedIn -->
-    <div id="step-1" class="bg-gray-900 rounded-xl p-6 border border-gray-800">
-        <h2 class="text-xl font-semibold mb-2">Paso 1: Conectá tu LinkedIn</h2>
-        <p class="text-sm text-gray-400 mb-4">Logueate en LinkedIn en el visor de abajo. Tus credenciales nunca se guardan — solo extraemos las cookies de sesión temporal.</p>
-
-        <div id="browser-container" class="mb-4">
-            <div class="bg-gray-800 rounded-lg overflow-hidden border border-gray-700">
-                <canvas id="browser-canvas" class="w-full" style="min-height: 400px; max-height: 600px;"></canvas>
-            </div>
-            <div id="browser-status" class="text-sm text-gray-400 mt-2"></div>
+    <!-- Step progress -->
+    <div class="flex items-center justify-center gap-0 mb-10" id="step-progress">
+        <div class="flex items-center gap-2">
+            <div id="step-ind-1" class="step-pip active w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-white">1</div>
+            <span id="step-label-1" class="text-xs font-medium text-gray-400 hidden sm:block">LinkedIn</span>
         </div>
-
-        <div class="flex gap-3">
-            <button id="btn-start-browser" onclick="startBrowser()" class="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-lg text-sm font-medium transition">
-                Iniciar navegador
-            </button>
-            <button id="btn-extract" onclick="extractData()" disabled class="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed px-5 py-2 rounded-lg text-sm font-medium transition">
-                Ya me logueé — Extraer datos
-            </button>
+        <div id="conn-1-2" class="step-connector w-10 sm:w-16 h-px bg-gray-800 mx-2"></div>
+        <div class="flex items-center gap-2">
+            <div id="step-ind-2" class="step-pip w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-gray-500 bg-gray-800">2</div>
+            <span id="step-label-2" class="text-xs font-medium text-gray-500 hidden sm:block">Perfil</span>
+        </div>
+        <div id="conn-2-3" class="step-connector w-10 sm:w-16 h-px bg-gray-800 mx-2"></div>
+        <div class="flex items-center gap-2">
+            <div id="step-ind-3" class="step-pip w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-gray-500 bg-gray-800">3</div>
+            <span id="step-label-3" class="text-xs font-medium text-gray-500 hidden sm:block">Activar</span>
+        </div>
+        <div id="conn-3-4" class="step-connector w-10 sm:w-16 h-px bg-gray-800 mx-2"></div>
+        <div class="flex items-center gap-2">
+            <div id="step-ind-4" class="step-pip w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-gray-500 bg-gray-800">4</div>
+            <span id="step-label-4" class="text-xs font-medium text-gray-500 hidden sm:block">Fechas</span>
+        </div>
+        <div id="conn-4-5" class="step-connector w-10 sm:w-16 h-px bg-gray-800 mx-2"></div>
+        <div class="flex items-center gap-2">
+            <div id="step-ind-5" class="step-pip w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-gray-500 bg-gray-800">5</div>
+            <span id="step-label-5" class="text-xs font-medium text-gray-500 hidden sm:block">Extraer</span>
         </div>
     </div>
 
-    <!-- Step 2: Personal Info -->
-    <div id="step-2" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
-        <h2 class="text-xl font-semibold mb-2">Paso 2: Tus datos</h2>
-        <p class="text-sm text-gray-400 mb-4">Completamos algunos datos desde tu perfil de LinkedIn. Verificalos y completá el resto.</p>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-                <label class="block text-sm text-gray-400 mb-1">Nombre</label>
-                <input id="reg-first-name" type="text" required class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
-            </div>
-            <div>
-                <label class="block text-sm text-gray-400 mb-1">Apellido</label>
-                <input id="reg-last-name" type="text" required class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
-            </div>
-            <div>
-                <label class="block text-sm text-gray-400 mb-1">Email</label>
-                <input id="reg-email" type="email" required class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500" placeholder="tu@email.com">
-            </div>
-            <div>
-                <label class="block text-sm text-gray-400 mb-1">Teléfono (opcional)</label>
-                <input id="reg-phone" type="tel" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500" placeholder="+54 11...">
-            </div>
-        </div>
-        <input id="reg-public-id" type="hidden">
-        <input id="reg-profile-url" type="hidden">
-
-        <div id="reg-error" class="hidden text-sm text-red-400 mb-3"></div>
-
-        <button onclick="submitRegistration()" class="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-lg text-sm font-medium transition">
-            Continuar
-        </button>
-    </div>
-
-    <!-- Step 3: Payment -->
-    <div id="step-3" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
-        <h2 class="text-xl font-semibold mb-2">Paso 3: Activá tu análisis</h2>
-        <p class="text-sm text-gray-400 mb-6">Elegí cómo pagar. Cada activación te permite extraer hasta 3 meses de posts.</p>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <!-- Invitation Code -->
-            <div class="bg-gray-800/50 rounded-lg p-5 border border-gray-700">
-                <h3 class="text-sm font-semibold text-emerald-400 mb-3">Código de invitación</h3>
-                <p class="text-xs text-gray-400 mb-3">Si tenés un código, ingresalo acá para acceso gratuito.</p>
-                <input id="inv-code" type="text" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 mb-3" placeholder="CODIGO123">
-                <button onclick="redeemCode()" class="bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-lg text-sm font-medium transition w-full">
-                    Canjear código
-                </button>
-            </div>
-
-            <!-- Mock Payment -->
-            <div class="bg-gray-800/50 rounded-lg p-5 border border-gray-700">
-                <h3 class="text-sm font-semibold text-blue-400 mb-3">Pago USD $5</h3>
-                <p class="text-xs text-gray-400 mb-3">Pago único por extracción. Desbloquea hasta 3 meses de datos.</p>
-                <div class="bg-gray-800 rounded-lg p-3 mb-3 text-center">
-                    <span class="text-2xl font-bold text-white">$5</span>
-                    <span class="text-gray-400 text-sm"> USD</span>
+    <!-- ===================== STEP 1: Connect LinkedIn ===================== -->
+    <div id="step-1" class="step-content">
+        <div class="card-surface rounded-2xl border border-white/5 overflow-hidden">
+            <!-- Header -->
+            <div class="px-6 pt-6 pb-4">
+                <div class="flex items-center justify-between mb-1">
+                    <h2 class="text-lg font-semibold text-white">Conecta tu LinkedIn</h2>
+                    <div id="browser-badge" class="status-badge bg-yellow-500/10 text-yellow-400">
+                        <span class="w-1.5 h-1.5 rounded-full bg-current pulse-dot"></span>
+                        <span id="browser-badge-text">Conectando...</span>
+                    </div>
                 </div>
-                <button onclick="mockPayment()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg text-sm font-medium transition w-full">
-                    Pagar $5 USD
-                </button>
+                <p class="text-sm text-gray-400">Inicia sesion en LinkedIn abajo. Tus credenciales nunca se guardan.</p>
+            </div>
+
+            <!-- Browser viewer area -->
+            <div class="px-6 pb-2">
+                <div id="browser-wrapper" class="relative rounded-xl overflow-hidden border border-white/5 bg-surface-900" style="min-height: 420px;">
+                    <!-- Loading state (shown initially) -->
+                    <div id="browser-loading" class="absolute inset-0 flex flex-col items-center justify-center gap-4 z-10">
+                        <div class="loader-ring"></div>
+                        <p class="text-sm text-gray-400 shimmer-text">Preparando navegador seguro...</p>
+                    </div>
+                    <!-- Canvas (hidden until ready) -->
+                    <canvas id="browser-canvas" class="w-full opacity-0 transition-opacity duration-500" style="min-height: 420px;"></canvas>
+                    <!-- Login detected overlay -->
+                    <div id="login-success-overlay" class="absolute inset-0 bg-surface-900/90 backdrop-blur-sm flex-col items-center justify-center gap-4 z-20 hidden">
+                        <div class="animate-scale-in">
+                            <div class="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center mb-4 mx-auto">
+                                <svg class="w-8 h-8 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="20 6 9 17 4 12" class="check-anim"></polyline>
+                                </svg>
+                            </div>
+                            <p class="text-white font-semibold text-lg text-center">Sesion detectada</p>
+                            <p class="text-gray-400 text-sm mt-1 text-center">Extrayendo tu perfil...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer hint -->
+            <div id="browser-hint" class="px-6 py-4 border-t border-white/5">
+                <div class="flex items-center gap-2 text-xs text-gray-500">
+                    <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                    <span>Conexion segura. Solo extraemos cookies de sesion temporales.</span>
+                </div>
             </div>
         </div>
-
-        <div id="payment-status" class="text-sm text-gray-400"></div>
     </div>
 
-    <!-- Step 4: Date Range -->
-    <div id="step-4" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
-        <h2 class="text-xl font-semibold mb-2">Paso 4: Elegí el rango de fechas</h2>
-        <p class="text-sm text-gray-400 mb-4">Seleccioná el período que querés analizar. Máximo 3 meses, hasta 1 año atrás.</p>
+    <!-- ===================== STEP 2: Personal Info ===================== -->
+    <div id="step-2" class="step-content hidden">
+        <div class="card-surface rounded-2xl border border-white/5 p-6">
+            <h2 class="text-lg font-semibold text-white mb-1">Completa tu perfil</h2>
+            <p class="text-sm text-gray-400 mb-6">Verificamos los datos de tu LinkedIn. Solo falta tu email.</p>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-                <label class="block text-sm text-gray-400 mb-1">Desde</label>
-                <input id="scrape-from" type="date" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1.5">Nombre</label>
+                    <input id="reg-first-name" type="text" required class="w-full bg-surface-900 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 transition">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1.5">Apellido</label>
+                    <input id="reg-last-name" type="text" required class="w-full bg-surface-900 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 transition">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1.5">Email</label>
+                    <input id="reg-email" type="email" required class="w-full bg-surface-900 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 transition" placeholder="tu@email.com">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1.5">Telefono <span class="text-gray-600">(opcional)</span></label>
+                    <input id="reg-phone" type="tel" class="w-full bg-surface-900 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 transition" placeholder="+54 11...">
+                </div>
             </div>
-            <div>
-                <label class="block text-sm text-gray-400 mb-1">Hasta</label>
-                <input id="scrape-to" type="date" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
-            </div>
-        </div>
+            <input id="reg-public-id" type="hidden">
+            <input id="reg-profile-url" type="hidden">
 
-        <div id="date-validation" class="text-sm text-yellow-400 mb-3 hidden"></div>
+            <div id="reg-error" class="hidden text-sm text-red-400 mb-3 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2"></div>
 
-        <button id="btn-start-scrape" onclick="startScraping()" class="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-lg text-sm font-medium transition">
-            Iniciar extracción
-        </button>
-    </div>
-
-    <!-- Step 5: Scraping Progress -->
-    <div id="step-5" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
-        <h2 class="text-xl font-semibold mb-2">Paso 5: Extrayendo datos</h2>
-        <p class="text-sm text-gray-400 mb-4">Estamos extrayendo tus publicaciones de LinkedIn. Esto puede tardar unos minutos.</p>
-
-        <div class="mb-6">
-            <div class="flex items-center gap-3 text-sm text-gray-400 mb-2">
-                <span id="scrape-loader" class="loader"></span>
-                <span id="scrape-progress-text">Iniciando extracción...</span>
-            </div>
-            <div class="w-full bg-gray-800 rounded-full h-2">
-                <div id="scrape-progress-bar" class="bg-blue-500 h-2 rounded-full transition-all duration-500" style="width: 10%"></div>
-            </div>
-        </div>
-
-        <div id="scrape-result" class="hidden">
-            <div class="bg-emerald-900/20 border border-emerald-800/30 rounded-lg p-4 mb-4">
-                <p class="text-emerald-300 font-semibold mb-1" id="scrape-result-text"></p>
-                <p class="text-sm text-gray-400" id="scrape-result-detail"></p>
-            </div>
-            <a href="/dashboard" class="inline-block bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg text-sm font-medium transition">
-                Ir al Dashboard
-            </a>
+            <button onclick="submitRegistration()" class="bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-medium px-6 py-2.5 rounded-lg text-sm transition">
+                Continuar
+            </button>
         </div>
     </div>
+
+    <!-- ===================== STEP 3: Payment ===================== -->
+    <div id="step-3" class="step-content hidden">
+        <div class="card-surface rounded-2xl border border-white/5 p-6">
+            <h2 class="text-lg font-semibold text-white mb-1">Activa tu analisis</h2>
+            <p class="text-sm text-gray-400 mb-6">Cada activacion te permite extraer hasta 3 meses de posts.</p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <!-- Invitation Code -->
+                <div class="bg-surface-900/60 rounded-xl p-5 border border-white/5 hover:border-emerald-500/20 transition">
+                    <div class="flex items-center gap-2 mb-3">
+                        <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z"></path></svg>
+                        </div>
+                        <h3 class="text-sm font-semibold text-emerald-400">Codigo de invitacion</h3>
+                    </div>
+                    <p class="text-xs text-gray-400 mb-3">Acceso gratuito con un codigo valido.</p>
+                    <input id="inv-code" type="text" class="w-full bg-surface-950 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500 mb-3" placeholder="CODIGO123">
+                    <button onclick="redeemCode()" class="w-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-medium px-4 py-2 rounded-lg text-sm transition">
+                        Canjear codigo
+                    </button>
+                </div>
+
+                <!-- Payment -->
+                <div class="bg-surface-900/60 rounded-xl p-5 border border-white/5 hover:border-brand-500/20 transition">
+                    <div class="flex items-center gap-2 mb-3">
+                        <div class="w-8 h-8 rounded-lg bg-brand-500/10 flex items-center justify-center">
+                            <svg class="w-4 h-4 text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
+                        </div>
+                        <h3 class="text-sm font-semibold text-brand-400">Pago unico</h3>
+                    </div>
+                    <p class="text-xs text-gray-400 mb-3">Desbloquea hasta 3 meses de datos.</p>
+                    <div class="bg-surface-950 rounded-lg p-3 mb-3 text-center">
+                        <span class="text-2xl font-bold text-white">$5</span>
+                        <span class="text-gray-400 text-xs ml-1">USD</span>
+                    </div>
+                    <button onclick="mockPayment()" class="w-full bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-medium px-4 py-2 rounded-lg text-sm transition">
+                        Pagar $5 USD
+                    </button>
+                </div>
+            </div>
+
+            <div id="payment-status" class="text-sm text-gray-400"></div>
+        </div>
+    </div>
+
+    <!-- ===================== STEP 4: Date Range ===================== -->
+    <div id="step-4" class="step-content hidden">
+        <div class="card-surface rounded-2xl border border-white/5 p-6">
+            <h2 class="text-lg font-semibold text-white mb-1">Rango de fechas</h2>
+            <p class="text-sm text-gray-400 mb-6">Selecciona el periodo a analizar. Maximo 3 meses, hasta 1 anio atras.</p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1.5">Desde</label>
+                    <input id="scrape-from" type="date" class="w-full bg-surface-900 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 transition">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1.5">Hasta</label>
+                    <input id="scrape-to" type="date" class="w-full bg-surface-900 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 transition">
+                </div>
+            </div>
+
+            <div id="date-validation" class="text-sm text-yellow-400 mb-3 hidden bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-4 py-2"></div>
+
+            <button id="btn-start-scrape" onclick="startScraping()" class="bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-medium px-6 py-2.5 rounded-lg text-sm transition">
+                Iniciar extraccion
+            </button>
+        </div>
+    </div>
+
+    <!-- ===================== STEP 5: Scraping ===================== -->
+    <div id="step-5" class="step-content hidden">
+        <div class="card-surface rounded-2xl border border-white/5 p-6">
+            <h2 class="text-lg font-semibold text-white mb-1">Extrayendo datos</h2>
+            <p class="text-sm text-gray-400 mb-6">Esto puede tardar unos minutos. No cierres esta pagina.</p>
+
+            <div class="mb-6">
+                <div class="flex items-center gap-3 mb-3">
+                    <span id="scrape-loader" class="loader-ring loader-ring-sm"></span>
+                    <span id="scrape-progress-text" class="text-sm text-gray-300">Iniciando extraccion...</span>
+                </div>
+                <div class="w-full bg-surface-900 rounded-full h-1.5 overflow-hidden">
+                    <div id="scrape-progress-bar" class="bg-brand-500 h-1.5 rounded-full transition-all duration-700 ease-out" style="width: 8%"></div>
+                </div>
+            </div>
+
+            <div id="scrape-result" class="hidden animate-slide-up">
+                <div class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-5 mb-5">
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        </div>
+                        <div>
+                            <p class="text-emerald-300 font-semibold" id="scrape-result-text"></p>
+                            <p class="text-sm text-gray-400 mt-0.5" id="scrape-result-detail"></p>
+                        </div>
+                    </div>
+                </div>
+                <a href="/dashboard" class="inline-flex items-center gap-2 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-medium px-6 py-2.5 rounded-lg text-sm transition">
+                    Ir al Dashboard
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path></svg>
+                </a>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <script src="/static/js/browser-viewer.js"></script>
@@ -178,97 +309,160 @@ let sessionId = null;
 let encryptedCookies = null;
 let paymentId = null;
 let authToken = null;
+let loginCheckInterval = null;
+let loginDetected = false;
 
-// Auth helper
 function getAuthHeaders() {
     const headers = { 'Content-Type': 'application/json' };
     if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
     return headers;
 }
 
+// ── Step management ──────────────────────────────────────────────
 function setStep(step) {
     for (let i = 1; i <= 5; i++) {
-        document.getElementById(`step-${i}`).classList.toggle('hidden', i !== step);
+        const el = document.getElementById(`step-${i}`);
         const ind = document.getElementById(`step-ind-${i}`);
-        ind.classList.remove('active', 'done');
-        if (i < step) ind.classList.add('done');
-        else if (i === step) ind.classList.add('active');
+        const lbl = document.getElementById(`step-label-${i}`);
+
+        el.classList.toggle('hidden', i !== step);
+
+        ind.className = 'step-pip w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold';
+        if (i < step) {
+            ind.classList.add('done', 'text-white');
+            ind.innerHTML = '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+            if (lbl) lbl.className = 'text-xs font-medium text-emerald-400 hidden sm:block';
+        } else if (i === step) {
+            ind.classList.add('active', 'text-white');
+            ind.textContent = i;
+            if (lbl) lbl.className = 'text-xs font-medium text-gray-300 hidden sm:block';
+        } else {
+            ind.classList.add('bg-gray-800', 'text-gray-500');
+            ind.textContent = i;
+            if (lbl) lbl.className = 'text-xs font-medium text-gray-500 hidden sm:block';
+        }
+
+        // Connectors
+        if (i < 5) {
+            const conn = document.getElementById(`conn-${i}-${i+1}`);
+            if (conn) {
+                conn.className = i < step ? 'step-connector w-10 sm:w-16 h-px bg-emerald-500 mx-2' : 'step-connector w-10 sm:w-16 h-px bg-gray-800 mx-2';
+            }
+        }
     }
 }
 
-// Step 1: Browser
-async function startBrowser() {
-    const btn = document.getElementById('btn-start-browser');
-    btn.disabled = true;
-    btn.textContent = 'Iniciando...';
-    document.getElementById('browser-status').innerHTML = '<span class="loader"></span> Preparando navegador...';
-
+// ── Step 1: Auto-start browser ───────────────────────────────────
+async function initBrowser() {
     try {
         const res = await fetch('/api/browser/start', { method: 'POST' });
         const data = await res.json();
-        if (data.status === 'ok') {
-            sessionId = data.session_id;
-            const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${wsProto}//${location.host}/ws/browser/${sessionId}`;
-            const canvas = document.getElementById('browser-canvas');
-            browserViewer = new BrowserViewer(canvas, wsUrl);
 
-            browserViewer.on('connected', () => {
-                document.getElementById('browser-status').textContent = 'Navegador listo. Logueate en LinkedIn y hacé click en "Extraer datos".';
-                document.getElementById('btn-extract').disabled = false;
-                btn.textContent = 'Navegador activo';
-            });
-
-            browserViewer.on('cookies-extracted', (data) => {
-                encryptedCookies = data.encrypted;
-                document.getElementById('browser-status').innerHTML =
-                    '<span class="text-emerald-400">Cookies extraídas correctamente.</span> Extrayendo perfil...';
-                browserViewer.extractProfile();
-            });
-
-            browserViewer.on('profile-extracted', (profile) => {
-                document.getElementById('reg-first-name').value = profile.first_name || '';
-                document.getElementById('reg-last-name').value = profile.last_name || '';
-                document.getElementById('reg-public-id').value = profile.public_id || '';
-                document.getElementById('reg-profile-url').value = profile.profile_url || '';
-
-                // Stop browser
-                if (sessionId) {
-                    fetch(`/api/browser/stop/${sessionId}`, { method: 'POST' });
-                }
-                if (browserViewer) browserViewer.destroy();
-
-                setStep(2);
-            });
-
-            browserViewer.on('error', (err) => {
-                document.getElementById('browser-status').innerHTML =
-                    `<span class="text-red-400">${err.message}</span>`;
-            });
-
-            browserViewer.on('disconnected', () => {
-                document.getElementById('browser-status').textContent = 'Conexión perdida.';
-            });
-        } else {
-            document.getElementById('browser-status').textContent = `Error: ${data.message}`;
-            btn.disabled = false;
-            btn.textContent = 'Reintentar';
+        if (data.status !== 'ok') {
+            showBrowserError(data.message || 'Error al iniciar el navegador');
+            return;
         }
+
+        sessionId = data.session_id;
+        const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProto}//${location.host}/ws/browser/${sessionId}`;
+        const canvas = document.getElementById('browser-canvas');
+        browserViewer = new BrowserViewer(canvas, wsUrl);
+
+        browserViewer.on('connected', () => {
+            // Hide loading, show canvas
+            document.getElementById('browser-loading').style.display = 'none';
+            canvas.style.opacity = '1';
+
+            // Update badge
+            setBadge('waiting', 'Esperando login');
+
+            // Start auto-checking for login every 2 seconds
+            loginCheckInterval = setInterval(() => {
+                if (!loginDetected && browserViewer) {
+                    browserViewer.checkLogin();
+                }
+            }, 2000);
+        });
+
+        browserViewer.on('login-detected', (data) => {
+            if (loginDetected) return;
+            loginDetected = true;
+            encryptedCookies = data.encrypted;
+
+            // Stop checking
+            if (loginCheckInterval) { clearInterval(loginCheckInterval); loginCheckInterval = null; }
+
+            // Show success overlay
+            setBadge('success', 'Conectado');
+            const overlay = document.getElementById('login-success-overlay');
+            overlay.classList.remove('hidden');
+            overlay.style.display = 'flex';
+
+            // Auto-extract profile
+            setTimeout(() => {
+                browserViewer.extractProfile();
+            }, 600);
+        });
+
+        browserViewer.on('profile-extracted', (profile) => {
+            document.getElementById('reg-first-name').value = profile.first_name || '';
+            document.getElementById('reg-last-name').value = profile.last_name || '';
+            document.getElementById('reg-public-id').value = profile.public_id || '';
+            document.getElementById('reg-profile-url').value = profile.profile_url || '';
+
+            // Clean up browser
+            if (sessionId) fetch(`/api/browser/stop/${sessionId}`, { method: 'POST' });
+            if (browserViewer) browserViewer.destroy();
+
+            // Move to step 2 with a small delay for the animation
+            setTimeout(() => setStep(2), 800);
+        });
+
+        browserViewer.on('error', (err) => {
+            // If login detection fails, just keep waiting (don't show error for that)
+            if (err.message && err.message.includes('cookies')) return;
+            showBrowserError(err.message);
+        });
+
+        browserViewer.on('disconnected', () => {
+            if (!loginDetected) {
+                setBadge('error', 'Desconectado');
+            }
+        });
+
     } catch (e) {
-        document.getElementById('browser-status').textContent = `Error: ${e.message}`;
-        btn.disabled = false;
-        btn.textContent = 'Reintentar';
+        showBrowserError(e.message);
     }
 }
 
-function extractData() {
-    if (browserViewer) {
-        document.getElementById('browser-status').innerHTML = '<span class="loader"></span> Extrayendo cookies...';
-        browserViewer.extractCookies();
-    }
+function setBadge(state, text) {
+    const badge = document.getElementById('browser-badge');
+    const badgeText = document.getElementById('browser-badge-text');
+    badgeText.textContent = text;
+
+    badge.className = 'status-badge';
+    if (state === 'waiting') badge.classList.add('bg-yellow-500/10', 'text-yellow-400');
+    else if (state === 'success') badge.classList.add('bg-emerald-500/10', 'text-emerald-400');
+    else if (state === 'error') badge.classList.add('bg-red-500/10', 'text-red-400');
+    else badge.classList.add('bg-yellow-500/10', 'text-yellow-400');
 }
 
-// Step 2: Registration
+function showBrowserError(msg) {
+    document.getElementById('browser-loading').innerHTML = `
+        <div class="text-center">
+            <div class="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-3">
+                <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+            </div>
+            <p class="text-sm text-gray-300 mb-1">No se pudo iniciar el navegador</p>
+            <p class="text-xs text-gray-500 mb-4">${msg}</p>
+            <button onclick="location.reload()" class="text-sm text-brand-400 hover:text-brand-300 font-medium transition">Reintentar</button>
+        </div>
+    `;
+    setBadge('error', 'Error');
+}
+
+// ── Step 2: Registration ─────────────────────────────────────────
 async function submitRegistration() {
     const errorEl = document.getElementById('reg-error');
     errorEl.classList.add('hidden');
@@ -283,7 +477,7 @@ async function submitRegistration() {
     };
 
     if (!body.first_name || !body.last_name || !body.email) {
-        errorEl.textContent = 'Completá nombre, apellido y email.';
+        errorEl.textContent = 'Completa nombre, apellido y email.';
         errorEl.classList.remove('hidden');
         return;
     }
@@ -298,11 +492,10 @@ async function submitRegistration() {
 
         if (data.status === 'ok') {
             authToken = data.token;
-            // Set cookie for future page navigations
             document.cookie = `session_token=${authToken}; path=/; max-age=${7*24*3600}; samesite=lax`;
             setStep(3);
         } else if (data.status === 'existing_user') {
-            errorEl.textContent = data.message + ' Podés ir a iniciar sesión.';
+            errorEl.textContent = data.message + ' Podes ir a iniciar sesion.';
             errorEl.classList.remove('hidden');
         } else {
             errorEl.textContent = data.message || 'Error al registrar.';
@@ -314,10 +507,10 @@ async function submitRegistration() {
     }
 }
 
-// Step 3: Payment
+// ── Step 3: Payment ──────────────────────────────────────────────
 async function redeemCode() {
     const code = document.getElementById('inv-code').value.trim();
-    if (!code) { showPaymentStatus('Ingresá un código.', true); return; }
+    if (!code) { showPaymentStatus('Ingresa un codigo.', true); return; }
 
     try {
         const res = await fetch('/api/payments/redeem-code', {
@@ -334,7 +527,7 @@ async function redeemCode() {
         } else {
             const errMsg = typeof data.detail === 'string' ? data.detail
                 : Array.isArray(data.detail) ? data.detail.map(d => d.msg).join(', ')
-                : data.message || 'Código inválido.';
+                : data.message || 'Codigo invalido.';
             showPaymentStatus(errMsg, true);
         }
     } catch (e) {
@@ -369,7 +562,7 @@ function showPaymentStatus(msg, isError = false) {
     el.className = `text-sm ${isError ? 'text-red-400' : 'text-emerald-400'}`;
 }
 
-// Step 4: Date Range
+// ── Step 4: Date Range ───────────────────────────────────────────
 function setupDateRange() {
     const today = new Date();
     const threeMonthsAgo = new Date(today);
@@ -378,7 +571,6 @@ function setupDateRange() {
     document.getElementById('scrape-to').value = today.toISOString().slice(0, 10);
     document.getElementById('scrape-from').value = threeMonthsAgo.toISOString().slice(0, 10);
 
-    // Validate on change
     const validate = () => {
         const from = new Date(document.getElementById('scrape-from').value);
         const to = new Date(document.getElementById('scrape-to').value);
@@ -387,11 +579,11 @@ function setupDateRange() {
         const el = document.getElementById('date-validation');
 
         if (diffDays > 93) {
-            el.textContent = 'El rango máximo es de 3 meses (93 días).';
+            el.textContent = 'El rango maximo es de 3 meses (93 dias).';
             el.classList.remove('hidden');
             document.getElementById('btn-start-scrape').disabled = true;
         } else if (daysBack > 365) {
-            el.textContent = 'No se puede ir más de 1 año atrás.';
+            el.textContent = 'No se puede ir mas de 1 anio atras.';
             el.classList.remove('hidden');
             document.getElementById('btn-start-scrape').disabled = true;
         } else {
@@ -403,7 +595,7 @@ function setupDateRange() {
     document.getElementById('scrape-to').addEventListener('change', validate);
 }
 
-// Step 5: Scraping
+// ── Step 5: Scraping ─────────────────────────────────────────────
 async function startScraping() {
     setStep(5);
 
@@ -435,51 +627,43 @@ async function startScraping() {
         }
     } catch (e) {
         document.getElementById('scrape-progress-text').textContent = `Error: ${e.message}`;
-        document.getElementById('scrape-loader').classList.add('hidden');
+        document.getElementById('scrape-loader').style.display = 'none';
     }
 }
 
 async function pollScrapeStatus(scrapeSessionId) {
     const poll = async () => {
         try {
-            const res = await fetch(`/api/scrape/status/${scrapeSessionId}`, {
-                headers: getAuthHeaders()
-            });
+            const res = await fetch(`/api/scrape/status/${scrapeSessionId}`, { headers: getAuthHeaders() });
             const data = await res.json();
-
             const scrapeStatus = data.scrape_status || data.status;
 
             if (scrapeStatus === 'completed') {
                 document.getElementById('scrape-loader').style.display = 'none';
                 document.getElementById('scrape-progress-bar').style.width = '100%';
                 const count = data.posts_scraped || 0;
-                if (count > 0) {
-                    document.getElementById('scrape-progress-text').textContent = 'Extracción completada.';
-                    document.getElementById('scrape-result-text').textContent =
-                        `Se extrajeron ${count} publicaciones.`;
-                } else {
-                    document.getElementById('scrape-progress-text').textContent = 'Extracción completada sin resultados.';
-                    document.getElementById('scrape-result-text').textContent =
-                        'No se encontraron publicaciones en el rango seleccionado.';
-                }
+                document.getElementById('scrape-progress-text').textContent = count > 0
+                    ? 'Extraccion completada.'
+                    : 'Extraccion completada sin resultados.';
+                document.getElementById('scrape-result-text').textContent = count > 0
+                    ? `Se extrajeron ${count} publicaciones.`
+                    : 'No se encontraron publicaciones en el rango seleccionado.';
                 document.getElementById('scrape-result').classList.remove('hidden');
                 document.getElementById('scrape-result-detail').textContent =
-                    `Período: ${data.from_date || ''} a ${data.to_date || ''}`;
+                    `Periodo: ${data.from_date || ''} a ${data.to_date || ''}`;
                 return;
             } else if (scrapeStatus === 'failed') {
                 document.getElementById('scrape-loader').style.display = 'none';
                 document.getElementById('scrape-progress-text').textContent =
-                    `Error: ${data.error_message || 'La extracción falló.'}`;
-                document.getElementById('scrape-progress-bar').classList.replace('bg-blue-500', 'bg-red-500');
+                    `Error: ${data.error_message || 'La extraccion fallo.'}`;
+                document.getElementById('scrape-progress-bar').className =
+                    'bg-red-500 h-1.5 rounded-full transition-all duration-700';
                 return;
             } else {
-                // Still scraping (pending/scraping)
                 const scraped = data.posts_scraped || 0;
                 document.getElementById('scrape-progress-text').textContent =
                     `Extrayendo... ${scraped} posts encontrados hasta ahora.`;
-                if (scraped > 0) {
-                    document.getElementById('scrape-progress-bar').style.width = '50%';
-                }
+                if (scraped > 0) document.getElementById('scrape-progress-bar').style.width = '50%';
                 setTimeout(poll, 3000);
             }
         } catch (e) {
@@ -488,6 +672,11 @@ async function pollScrapeStatus(scrapeSessionId) {
     };
     setTimeout(poll, 2000);
 }
+
+// ── Boot ─────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    initBrowser();
+});
 </script>
 </body>
 </html>
