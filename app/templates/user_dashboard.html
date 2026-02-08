@@ -220,51 +220,34 @@
             </div>
         </div>
 
-        <!-- Deep Pattern Analysis -->
+        <!-- Deep Pattern Analysis (findings-based) -->
         <div id="pattern-section" class="hidden mb-6 space-y-6">
-            <div id="executive-summary" class="bg-gradient-to-r from-blue-900/40 to-purple-900/40 rounded-xl p-6 border border-blue-800/50">
-                <h3 class="text-lg font-semibold text-blue-300 mb-2">Resumen Ejecutivo</h3>
-                <div id="summary-text" class="text-gray-200 leading-relaxed whitespace-pre-line"></div>
-            </div>
-            <div id="data-cleaning-section" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
-                <h3 class="text-lg font-semibold text-cyan-400 mb-4">Datos Limpios vs Dashboard</h3>
-                <div id="data-cleaning-content" class="space-y-4"></div>
-            </div>
-            <div id="what-works-section" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
-                <h3 class="text-lg font-semibold text-emerald-400 mb-4">Qu&eacute; Funciona</h3>
-                <div id="what-works-content" class="space-y-3"></div>
-            </div>
-            <div id="what-fails-section" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
-                <h3 class="text-lg font-semibold text-red-400 mb-4">Qu&eacute; No Funciona</h3>
-                <div id="what-fails-content" class="space-y-3"></div>
-            </div>
-            <div id="optimal-formula-section" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
-                <h3 class="text-lg font-semibold text-blue-400 mb-4">F&oacute;rmula &Oacute;ptima</h3>
-                <div id="optimal-formula-content"></div>
-            </div>
-            <div id="trend-alert-section" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
-                <h3 class="text-lg font-semibold text-amber-400 mb-4">Tendencia y Alerta</h3>
-                <div id="trend-alert-content" class="space-y-3"></div>
-            </div>
-            <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
-                <h3 class="text-lg font-semibold text-yellow-400 mb-4">Patrones Ocultos</h3>
-                <div id="patterns-list" class="space-y-4"></div>
-            </div>
-            <div id="formula-section-legacy" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
-                <h3 class="text-lg font-semibold text-emerald-400 mb-4">Formula de Contenido</h3>
-                <div id="formula-content" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
-            </div>
-            <div id="drivers-section-legacy" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
-                <h3 class="text-lg font-semibold text-cyan-400 mb-4">Drivers de Engagement</h3>
-                <div id="drivers-list" class="space-y-3"></div>
-            </div>
-            <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
-                <h3 class="text-lg font-semibold text-purple-400 mb-4">Recomendaciones Estrat&eacute;gicas</h3>
-                <div id="recommendations-list" class="space-y-3"></div>
-            </div>
-            <div id="anomalies-section" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
-                <h3 class="text-lg font-semibold text-orange-400 mb-4">Anomal&iacute;as</h3>
-                <div id="anomalies-list" class="space-y-2"></div>
+            <!-- Key Metrics (contradicting dashboard) -->
+            <div id="key-metrics-section" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+
+            <!-- Tabs: Hallazgos | Dashboard vs Realidad | Formula -->
+            <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+                <div class="flex border-b border-gray-800">
+                    <button onclick="setAnalysisTab('findings')" id="tab-findings" class="flex-1 py-3 px-4 text-sm font-medium text-white bg-gray-800 transition">Hallazgos</button>
+                    <button onclick="setAnalysisTab('reality')" id="tab-reality" class="flex-1 py-3 px-4 text-sm font-medium text-gray-400 hover:text-white transition">Dashboard vs Realidad</button>
+                    <button onclick="setAnalysisTab('formula')" id="tab-formula" class="flex-1 py-3 px-4 text-sm font-medium text-gray-400 hover:text-white transition">F&oacute;rmula &Oacute;ptima</button>
+                </div>
+                <div class="p-5">
+                    <!-- Findings tab -->
+                    <div id="panel-findings">
+                        <div id="severity-badges" class="flex gap-2 mb-4"></div>
+                        <div id="findings-list" class="space-y-3"></div>
+                    </div>
+                    <!-- Dashboard vs Reality tab -->
+                    <div id="panel-reality" class="hidden">
+                        <div id="reality-list" class="space-y-3"></div>
+                    </div>
+                    <!-- Formula tab -->
+                    <div id="panel-formula" class="hidden space-y-4">
+                        <div id="formula-card" class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg p-6 border border-gray-700"></div>
+                        <div id="top-actions" class="space-y-3"></div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -454,15 +437,41 @@ async function runAIAnalysis() {
     document.getElementById('btn-ai-analyze').disabled = false;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     loadUserInfo();
 
-    // Default date range: 12 months ago to today
-    const today = new Date();
-    const fromDate = new Date(today);
-    fromDate.setFullYear(fromDate.getFullYear() - 1);
-    document.getElementById('filter-to').value = today.toISOString().slice(0, 10);
-    document.getElementById('filter-from').value = fromDate.toISOString().slice(0, 10);
+    // Auto-detect date range from ALL scrape sessions
+    try {
+        const res = await fetch('/api/dashboard/date-range');
+        const data = await res.json();
+        if (data.status === 'ok' && data.min_date && data.max_date) {
+            document.getElementById('filter-from').value = data.min_date;
+            document.getElementById('filter-to').value = data.max_date;
+
+            // Show scrape session info
+            if (data.scrape_sessions && data.scrape_sessions.length > 0) {
+                const sessions = data.scrape_sessions;
+                const info = sessions.length === 1
+                    ? `${data.total_posts} posts (${data.min_date} a ${data.max_date})`
+                    : `${data.total_posts} posts de ${sessions.length} extracciones (${data.min_date} a ${data.max_date})`;
+                setFilterStatus(info);
+            }
+        } else {
+            // Fallback: 12 months ago to today
+            const today = new Date();
+            const fromDate = new Date(today);
+            fromDate.setFullYear(fromDate.getFullYear() - 1);
+            document.getElementById('filter-to').value = today.toISOString().slice(0, 10);
+            document.getElementById('filter-from').value = fromDate.toISOString().slice(0, 10);
+        }
+    } catch (e) {
+        // Fallback: 12 months ago to today
+        const today = new Date();
+        const fromDate = new Date(today);
+        fromDate.setFullYear(fromDate.getFullYear() - 1);
+        document.getElementById('filter-to').value = today.toISOString().slice(0, 10);
+        document.getElementById('filter-from').value = fromDate.toISOString().slice(0, 10);
+    }
 
     // Auto-load metrics
     loadMetrics();
@@ -829,241 +838,213 @@ function renderDashboard(m) {
     });
 }
 
+let _currentAnalysisTab = 'findings';
+let _openFindings = new Set();
+
+function setAnalysisTab(tab) {
+    _currentAnalysisTab = tab;
+    ['findings', 'reality', 'formula'].forEach(t => {
+        document.getElementById(`panel-${t}`).classList.toggle('hidden', t !== tab);
+        const btn = document.getElementById(`tab-${t}`);
+        btn.className = t === tab
+            ? 'flex-1 py-3 px-4 text-sm font-medium text-white bg-gray-800 transition'
+            : 'flex-1 py-3 px-4 text-sm font-medium text-gray-400 hover:text-white transition';
+    });
+}
+
+function toggleFinding(id) {
+    if (_openFindings.has(id)) _openFindings.delete(id);
+    else _openFindings.add(id);
+    const details = document.getElementById(`finding-details-${id}`);
+    const icon = document.getElementById(`finding-icon-${id}`);
+    if (details) details.classList.toggle('hidden');
+    if (icon) icon.textContent = _openFindings.has(id) ? '\u2212' : '+';
+}
+
 function renderPatternAnalysis(pa) {
     if (!pa || pa.error) {
         document.getElementById('pattern-section').classList.add('hidden');
         return;
     }
+
+    // Support both new findings format and legacy format
+    const hasFindings = pa.findings && pa.findings.length > 0;
+    if (!hasFindings && !pa.executive_summary) {
+        document.getElementById('pattern-section').classList.add('hidden');
+        return;
+    }
+
     document.getElementById('pattern-section').classList.remove('hidden');
-    const isNewFormat = !!pa.data_cleaning || !!pa.what_works || !!pa.trend_alert;
+    _openFindings = new Set();
 
-    document.getElementById('summary-text').textContent = pa.executive_summary || '';
+    const severityConfig = {
+        critical: { bg: 'bg-red-900/20', border: 'border-red-800/40', badge: 'bg-red-900/40 text-red-300', label: 'Critico' },
+        warning: { bg: 'bg-amber-900/20', border: 'border-amber-800/40', badge: 'bg-amber-900/40 text-amber-300', label: 'Atencion' },
+        insight: { bg: 'bg-blue-900/20', border: 'border-blue-800/40', badge: 'bg-blue-900/40 text-blue-300', label: 'Insight' },
+    };
 
-    if (isNewFormat) {
-        if (pa.data_cleaning) {
-            const sec = document.getElementById('data-cleaning-section');
-            sec.classList.remove('hidden');
-            const content = document.getElementById('data-cleaning-content');
-            const dc = pa.data_cleaning;
-            const raw = pa._raw_stats?.outliers || {};
-            let statsHtml = '';
-            if (raw.with_outliers && raw.without_outliers) {
-                statsHtml = `
-                    <div class="grid grid-cols-2 gap-4 mt-3">
-                        <div class="bg-gray-800/60 rounded-lg p-3">
-                            <p class="text-xs text-gray-400 mb-2 font-semibold uppercase">Con outliers</p>
-                            <p class="text-sm text-gray-300">Media: ${raw.with_outliers.mean} &middot; Mediana: ${raw.with_outliers.median}</p>
-                            <p class="text-xs text-gray-500">P25: ${raw.with_outliers.p25} &middot; P75: ${raw.with_outliers.p75} &middot; P90: ${raw.with_outliers.p90}</p>
-                        </div>
-                        <div class="bg-gray-800/60 rounded-lg p-3">
-                            <p class="text-xs text-gray-400 mb-2 font-semibold uppercase">Sin outliers</p>
-                            <p class="text-sm text-gray-300">Media: ${raw.without_outliers.mean} &middot; Mediana: ${raw.without_outliers.median}</p>
-                            <p class="text-xs text-gray-500">P25: ${raw.without_outliers.p25} &middot; P75: ${raw.without_outliers.p75} &middot; P90: ${raw.without_outliers.p90}</p>
-                        </div>
-                    </div>`;
-            }
-            content.innerHTML = `
-                <div class="bg-cyan-900/15 rounded-lg p-4 border border-cyan-800/30">
-                    <h4 class="text-sm font-semibold text-cyan-300 mb-2">Outliers detectados: ${raw.count || 0} (umbral: ${raw.threshold || '?'})</h4>
-                    <p class="text-sm text-gray-300">${dc.outliers_found || ''}</p>
-                    ${statsHtml}
-                </div>
-                <div class="bg-gray-800/40 rounded-lg p-4 border border-gray-700/30">
-                    <h4 class="text-sm font-semibold text-gray-300 mb-2">Dashboard naive vs limpio</h4>
-                    <p class="text-sm text-gray-400">${dc.naive_vs_clean || ''}</p>
-                </div>
-            `;
-        }
-
-        if (pa.what_works) {
-            const sec = document.getElementById('what-works-section');
-            sec.classList.remove('hidden');
-            const content = document.getElementById('what-works-content');
-            const ww = pa.what_works;
-            const items = [
-                { label: 'Formato', text: ww.format, icon: 'text-blue-400' },
-                { label: 'Longitud', text: ww.length, icon: 'text-emerald-400' },
-                { label: 'Menciones', text: ww.mentions, icon: 'text-purple-400' },
-                { label: 'Keywords', text: ww.keywords, icon: 'text-amber-400' },
-                { label: 'Otros factores', text: ww.other_factors, icon: 'text-cyan-400' },
-            ];
-            content.innerHTML = items.filter(i => i.text).map(i => `
-                <div class="bg-emerald-900/10 rounded-lg p-3 border border-emerald-800/20">
-                    <span class="text-xs font-semibold ${i.icon} uppercase">${i.label}</span>
-                    <p class="text-sm text-gray-300 mt-1">${i.text}</p>
-                </div>
-            `).join('');
-        }
-
-        if (pa.what_fails) {
-            const sec = document.getElementById('what-fails-section');
-            sec.classList.remove('hidden');
-            const content = document.getElementById('what-fails-content');
-            const wf = pa.what_fails;
-            content.innerHTML = `
-                ${wf.penalties ? `<div class="bg-red-900/10 rounded-lg p-3 border border-red-800/20">
-                    <span class="text-xs font-semibold text-red-400 uppercase">Penalizaciones</span>
-                    <p class="text-sm text-gray-300 mt-1">${wf.penalties}</p>
-                </div>` : ''}
-                ${wf.low_performer_patterns ? `<div class="bg-red-900/10 rounded-lg p-3 border border-red-800/20">
-                    <span class="text-xs font-semibold text-red-400 uppercase">Patrones de bajo rendimiento</span>
-                    <p class="text-sm text-gray-300 mt-1">${wf.low_performer_patterns}</p>
-                </div>` : ''}
-            `;
-        }
-
-        if (pa.optimal_formula) {
-            const sec = document.getElementById('optimal-formula-section');
-            sec.classList.remove('hidden');
-            const content = document.getElementById('optimal-formula-content');
-            const of = pa.optimal_formula;
-            content.innerHTML = `
-                <div class="bg-blue-900/15 rounded-lg p-4 border border-blue-800/30">
-                    <p class="text-sm text-gray-200 leading-relaxed">${of.description || ''}</p>
-                    ${of.matching_posts ? `<p class="text-xs text-blue-400 mt-3">Posts que coinciden: ${of.matching_posts}</p>` : ''}
-                </div>
-            `;
-        }
-
-        if (pa.trend_alert) {
-            const sec = document.getElementById('trend-alert-section');
-            sec.classList.remove('hidden');
-            const content = document.getElementById('trend-alert-content');
-            const ta = pa.trend_alert;
-            const dirColor = ta.direction === 'growing' ? 'text-emerald-400' : ta.direction === 'declining' ? 'text-red-400' : 'text-amber-400';
-            const rawTemporal = pa._raw_stats?.temporal || {};
-            content.innerHTML = `
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="bg-gray-800/50 rounded-lg p-4">
-                        <p class="text-xs text-gray-400 uppercase font-semibold mb-2">Direcci&oacute;n</p>
-                        <p class="text-lg font-bold ${dirColor}">${(ta.direction || 'unknown').toUpperCase()}</p>
-                        ${rawTemporal.kendall_tau !== undefined ? `<p class="text-xs text-gray-500 mt-1">Kendall &tau; = ${rawTemporal.kendall_tau}, p = ${rawTemporal.kendall_p}</p>` : ''}
-                        <p class="text-sm text-gray-300 mt-2">${ta.last_month_vs_history || ''}</p>
-                    </div>
-                    <div class="bg-gray-800/50 rounded-lg p-4">
-                        <p class="text-xs text-gray-400 uppercase font-semibold mb-2">D&iacute;a de la semana</p>
-                        <p class="text-sm text-gray-300">${ta.day_significance || ''}</p>
-                        ${rawTemporal.kruskal_wallis_h !== undefined ? `<p class="text-xs text-gray-500 mt-1">Kruskal-Wallis H = ${rawTemporal.kruskal_wallis_h}, p = ${rawTemporal.kruskal_wallis_p}</p>` : ''}
-                    </div>
-                </div>
-                ${ta.repost_ratio_trend ? `<div class="bg-gray-800/40 rounded-lg p-3 mt-2">
-                    <p class="text-xs text-gray-400 uppercase font-semibold mb-1">Ratio de reposts</p>
-                    <p class="text-sm text-gray-300">${ta.repost_ratio_trend}</p>
-                </div>` : ''}
-            `;
-        }
-
-        const rawCorr = pa._raw_stats?.correlations;
-        if (rawCorr && rawCorr.length > 0) {
-            const corrSection = document.createElement('div');
-            corrSection.className = 'bg-gray-900 rounded-xl p-6 border border-gray-800';
-            corrSection.innerHTML = `
-                <h3 class="text-lg font-semibold text-indigo-400 mb-4">Correlaciones Spearman (p &lt; 0.05)</h3>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm">
-                        <thead><tr class="text-gray-400 border-b border-gray-800">
-                            <th class="text-left py-2 pr-4">Variable</th>
-                            <th class="text-right py-2 pr-4">rho</th>
-                            <th class="text-right py-2 pr-4">p-value</th>
-                            <th class="text-left py-2">Direcci&oacute;n</th>
-                        </tr></thead>
-                        <tbody>${rawCorr.map(c => `
-                            <tr class="border-b border-gray-800/50">
-                                <td class="py-2 pr-4 font-medium text-gray-200">${c.feature}</td>
-                                <td class="py-2 pr-4 text-right ${c.rho > 0 ? 'text-emerald-400' : 'text-red-400'}">${c.rho}</td>
-                                <td class="py-2 pr-4 text-right text-gray-400">${c.p_value}</td>
-                                <td class="py-2 text-gray-300">${c.direction === 'positive' ? '&uarr; Positiva' : '&darr; Negativa'}</td>
-                            </tr>
-                        `).join('')}</tbody>
-                    </table>
-                </div>
-            `;
-            document.getElementById('pattern-section').insertBefore(corrSection, document.getElementById('pattern-section').querySelector('.bg-gray-900:last-of-type'));
-        }
+    // ── Key Metrics ──
+    const metricsContainer = document.getElementById('key-metrics-section');
+    metricsContainer.innerHTML = '';
+    if (pa.key_metrics && pa.key_metrics.length > 0) {
+        pa.key_metrics.forEach(m => {
+            metricsContainer.innerHTML += `
+                <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+                    <p class="text-gray-400 text-xs uppercase tracking-wide">${m.label}</p>
+                    <p class="text-2xl font-bold text-white mt-1">${m.value}</p>
+                    <p class="text-xs text-gray-500 mt-1">${m.subtext}</p>
+                </div>`;
+        });
     }
 
-    // Legacy format
-    if (pa.content_formula) {
-        const formula = pa.content_formula;
-        document.getElementById('formula-section-legacy').classList.remove('hidden');
-        document.getElementById('formula-content').innerHTML = `
-            <div class="bg-emerald-900/20 rounded-lg p-4 border border-emerald-800/30">
-                <h4 class="text-sm font-semibold text-emerald-400 mb-2">Lo que funciona</h4>
-                <p class="text-sm text-gray-300">${formula.what_works || ''}</p>
-            </div>
-            <div class="bg-red-900/20 rounded-lg p-4 border border-red-800/30">
-                <h4 class="text-sm font-semibold text-red-400 mb-2">Lo que NO funciona</h4>
-                <p class="text-sm text-gray-300">${formula.what_fails || ''}</p>
-            </div>
+    // ── Findings tab ──
+    if (hasFindings) {
+        // Severity badges
+        const badgesContainer = document.getElementById('severity-badges');
+        const counts = {};
+        pa.findings.forEach(f => { counts[f.severity] = (counts[f.severity] || 0) + 1; });
+        badgesContainer.innerHTML = Object.entries(counts).map(([sev, count]) => {
+            const cfg = severityConfig[sev] || severityConfig.insight;
+            return `<span class="text-xs px-3 py-1 rounded-full ${cfg.badge}">${cfg.label} (${count})</span>`;
+        }).join('');
+
+        // Findings list
+        const findingsList = document.getElementById('findings-list');
+        findingsList.innerHTML = '';
+        pa.findings.forEach(f => {
+            const cfg = severityConfig[f.severity] || severityConfig.insight;
+            findingsList.innerHTML += `
+                <div class="rounded-lg border ${cfg.border} ${cfg.bg} overflow-hidden">
+                    <button onclick="toggleFinding('${f.id}')"
+                        class="w-full text-left p-4 flex items-start gap-3 hover:bg-white/5 transition-colors">
+                        <div class="flex-1">
+                            <div class="font-semibold text-gray-100 text-sm">${f.title}</div>
+                            <div class="text-xs text-gray-400 mt-1">${f.summary}</div>
+                        </div>
+                        <span id="finding-icon-${f.id}" class="text-gray-400 text-lg shrink-0">+</span>
+                    </button>
+                    <div id="finding-details-${f.id}" class="hidden px-4 pb-4">
+                        <div class="space-y-2 mb-3">
+                            ${(f.details || []).map(d => `
+                                <div class="text-xs text-gray-300 leading-relaxed flex gap-2">
+                                    <span class="text-gray-500 shrink-0">&rarr;</span>
+                                    <span>${d}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                        ${f.action ? `
+                        <div class="bg-gray-800/60 rounded-md p-3 border border-gray-700/40">
+                            <div class="text-xs font-semibold text-emerald-400 mb-1">Accion recomendada</div>
+                            <div class="text-xs text-gray-300">${f.action}</div>
+                        </div>` : ''}
+                    </div>
+                </div>`;
+        });
+
+        // Auto-open first finding
+        if (pa.findings.length > 0) toggleFinding(pa.findings[0].id);
+    }
+
+    // ── Dashboard vs Reality tab ──
+    const realityList = document.getElementById('reality-list');
+    realityList.innerHTML = '';
+    if (pa.dashboard_vs_reality && pa.dashboard_vs_reality.length > 0) {
+        pa.dashboard_vs_reality.forEach(item => {
+            realityList.innerHTML += `
+                <div class="flex gap-3 items-start bg-gray-800/40 rounded-lg p-4 border border-gray-700/30">
+                    <span class="text-red-400 shrink-0 text-lg mt-0.5">&times;</span>
+                    <div class="flex-1">
+                        <p class="text-sm text-gray-500 line-through">${item.dashboard_says}</p>
+                        <p class="text-sm text-emerald-400 mt-1">&rarr; ${item.reality}</p>
+                    </div>
+                </div>`;
+        });
+    } else {
+        realityList.innerHTML = '<p class="text-gray-500 text-sm">No hay comparaciones disponibles.</p>';
+    }
+
+    // ── Formula tab ──
+    const formulaCard = document.getElementById('formula-card');
+    const topActions = document.getElementById('top-actions');
+
+    if (pa.optimal_formula) {
+        const of = pa.optimal_formula;
+        const fields = [
+            { label: 'Formato', value: of.format },
+            { label: 'Largo', value: of.length },
+            { label: 'Menciones', value: of.mentions },
+            { label: 'Links', value: of.links },
+            { label: 'Contenido', value: of.content_style },
+            { label: 'Hashtags', value: of.hashtags },
+            { label: 'Cuando', value: of.when },
+            { label: 'Reposts', value: of.repost_limit },
+        ].filter(f => f.value);
+
+        formulaCard.innerHTML = `
+            <h3 class="text-lg font-bold text-white mb-4">Tu Post Optimo Real</h3>
+            <p class="text-xs text-gray-400 mb-4">Basado en datos limpios (sin outliers, solo originales, con tests estadisticos)</p>
+            <div class="space-y-3">
+                ${fields.map(f => `
+                    <div class="flex items-start gap-3">
+                        <div>
+                            <span class="text-xs text-gray-400">${f.label}:</span>
+                            <span class="text-sm font-semibold text-white ml-2">${f.value}</span>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>`;
+    } else {
+        formulaCard.innerHTML = '<p class="text-gray-500 text-sm">Formula no disponible.</p>';
+    }
+
+    // Top 3 actions
+    topActions.innerHTML = '';
+    if (pa.top_3_actions && pa.top_3_actions.length > 0) {
+        topActions.innerHTML = `
             <div class="bg-blue-900/20 rounded-lg p-4 border border-blue-800/30">
-                <h4 class="text-sm font-semibold text-blue-400 mb-2">Post &Oacute;ptimo</h4>
-                <p class="text-sm text-gray-300">${formula.optimal_post || ''}</p>
-            </div>
-        `;
-    }
-
-    if (pa.engagement_drivers && pa.engagement_drivers.length > 0) {
-        document.getElementById('drivers-section-legacy').classList.remove('hidden');
-        const driversList = document.getElementById('drivers-list');
-        driversList.innerHTML = '';
-        pa.engagement_drivers.forEach(d => {
-            const colors = {alto: 'text-emerald-400 bg-emerald-900/20 border-emerald-700/30', medio: 'text-yellow-400 bg-yellow-900/20 border-yellow-700/30', bajo: 'text-gray-400 bg-gray-800/50 border-gray-700/30'};
-            const c = colors[d.impact] || colors.medio;
-            const div = document.createElement('div');
-            div.className = `rounded-lg p-3 border ${c.split(' ').slice(1).join(' ')}`;
-            div.innerHTML = `
-                <div class="flex items-center gap-2 mb-1">
-                    <span class="font-semibold text-sm ${c.split(' ')[0]}">${d.factor}</span>
-                    <span class="tag ${c} text-xs border">${d.impact}</span>
+                <h4 class="text-sm font-bold text-blue-300 mb-3">Top ${pa.top_3_actions.length} acciones con mayor impacto</h4>
+                <div class="space-y-3">
+                    ${pa.top_3_actions.map((a, i) => `
+                        <div class="flex gap-2 text-xs text-gray-300">
+                            <span class="text-blue-400 font-bold shrink-0">${i + 1}.</span>
+                            <div>
+                                <span class="font-semibold text-white">${a.action}</span>
+                                <p class="text-gray-400 mt-0.5">${a.expected_impact}</p>
+                            </div>
+                        </div>
+                    `).join('')}
                 </div>
-                <p class="text-sm text-gray-300">${d.detail}</p>
-            `;
-            driversList.appendChild(div);
-        });
+            </div>`;
     }
 
-    // Hidden patterns
-    const patList = document.getElementById('patterns-list');
-    patList.innerHTML = '';
-    (pa.hidden_patterns || []).forEach((p, i) => {
-        const div = document.createElement('div');
-        div.className = 'bg-gray-800/50 rounded-lg p-4 border-l-4 border-yellow-500/50';
-        div.innerHTML = `
-            <h4 class="font-semibold text-yellow-300 mb-1">${i+1}. ${p.title}</h4>
-            <p class="text-sm text-gray-300 mb-2">${p.description}</p>
-            <p class="text-xs text-gray-500 mb-2"><strong>Evidencia:</strong> ${p.evidence}</p>
-            <p class="text-sm text-emerald-400"><strong>Acci&oacute;n:</strong> ${p.action}</p>
-        `;
-        patList.appendChild(div);
-    });
-
-    // Recommendations
-    const recList = document.getElementById('recommendations-list');
-    recList.innerHTML = '';
-    (pa.strategic_recommendations || []).forEach(r => {
-        const div = document.createElement('div');
-        div.className = 'bg-purple-900/20 rounded-lg p-4 border border-purple-800/30';
-        div.innerHTML = `
-            <div class="flex items-center gap-2 mb-1">
-                <span class="bg-purple-600 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">${r.priority}</span>
-                <span class="font-semibold text-sm text-purple-300">${r.recommendation}</span>
+    // ── Correlations table (from raw stats) ──
+    const rawCorr = pa._raw_stats?.correlations;
+    if (rawCorr && rawCorr.filter(c => c.significant).length > 0) {
+        const sigCorr = rawCorr.filter(c => c.significant);
+        const corrSection = document.createElement('div');
+        corrSection.className = 'bg-gray-900 rounded-xl p-5 border border-gray-800';
+        corrSection.innerHTML = `
+            <h3 class="text-sm font-medium text-indigo-400 mb-3">Correlaciones Spearman (p &lt; 0.05)</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead><tr class="text-gray-400 border-b border-gray-800">
+                        <th class="text-left py-2 pr-4">Variable</th>
+                        <th class="text-right py-2 pr-4">rho</th>
+                        <th class="text-right py-2 pr-4">p-value</th>
+                        <th class="text-left py-2">Direccion</th>
+                    </tr></thead>
+                    <tbody>${sigCorr.map(c => `
+                        <tr class="border-b border-gray-800/50">
+                            <td class="py-2 pr-4 font-medium text-gray-200">${c.feature}</td>
+                            <td class="py-2 pr-4 text-right ${c.rho > 0 ? 'text-emerald-400' : 'text-red-400'}">${c.rho}</td>
+                            <td class="py-2 pr-4 text-right text-gray-400">${c.p_value}</td>
+                            <td class="py-2 text-gray-300">${c.direction === 'positive' ? '&uarr; Positiva' : '&darr; Negativa'}</td>
+                        </tr>
+                    `).join('')}</tbody>
+                </table>
             </div>
-            <p class="text-sm text-gray-400 ml-8">${r.expected_impact}</p>
         `;
-        recList.appendChild(div);
-    });
-
-    // Anomalies
-    if (pa.anomalies && pa.anomalies.length > 0) {
-        document.getElementById('anomalies-section').classList.remove('hidden');
-        const anomList = document.getElementById('anomalies-list');
-        anomList.innerHTML = '';
-        pa.anomalies.forEach(a => {
-            const div = document.createElement('div');
-            div.className = 'text-sm text-orange-300/80 bg-orange-900/10 rounded-lg p-3 border border-orange-800/20';
-            div.textContent = typeof a === 'string' ? a : (a.description || a.title || JSON.stringify(a));
-            anomList.appendChild(div);
-        });
+        document.getElementById('pattern-section').appendChild(corrSection);
     }
 }
 

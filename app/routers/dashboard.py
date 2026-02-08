@@ -9,7 +9,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.analyzer import classify_posts, compute_metrics, deep_pattern_analysis
@@ -152,22 +152,29 @@ async def analyze_posts(
 
     post_dicts = db_posts_to_legacy_dicts(posts)
 
-    # Check for cached analysis
-    cached = await db.execute(
-        select(AnalysisResult).where(
-            AnalysisResult.user_id == user.id,
-            AnalysisResult.analysis_type == "full_dashboard",
-            AnalysisResult.post_count == len(post_dicts),
-        ).order_by(AnalysisResult.created_at.desc())
+    # Check for cached analysis (user_id + date range + post count)
+    from_dt_cache = datetime.strptime(from_date, "%Y-%m-%d") if from_date else None
+    to_dt_cache = datetime.strptime(to_date, "%Y-%m-%d") if to_date else None
+
+    cache_query = select(AnalysisResult).where(
+        AnalysisResult.user_id == user.id,
+        AnalysisResult.analysis_type == "full_dashboard",
+        AnalysisResult.post_count == len(post_dicts),
     )
+    if from_dt_cache:
+        cache_query = cache_query.where(AnalysisResult.from_date == from_dt_cache)
+    else:
+        cache_query = cache_query.where(AnalysisResult.from_date.is_(None))
+    if to_dt_cache:
+        cache_query = cache_query.where(AnalysisResult.to_date == to_dt_cache)
+    else:
+        cache_query = cache_query.where(AnalysisResult.to_date.is_(None))
+
+    cached = await db.execute(cache_query.order_by(AnalysisResult.created_at.desc()))
     cached_result = cached.scalar_one_or_none()
 
     if cached_result:
-        # Check if same date range
-        cached_from = cached_result.from_date.strftime("%Y-%m-%d") if cached_result.from_date else None
-        cached_to = cached_result.to_date.strftime("%Y-%m-%d") if cached_result.to_date else None
-        if cached_from == from_date and cached_to == to_date:
-            return {"status": "ok", "metrics": cached_result.result_data, "cached": True}
+        return {"status": "ok", "metrics": cached_result.result_data, "cached": True}
 
     if not openai_api_key or openai_api_key.startswith("sk-PONE"):
         # No AI: just compute metrics with defaults
@@ -256,13 +263,11 @@ async def analyze_posts(
 
         # Cache the complete analysis
         try:
-            from_dt = datetime.strptime(from_date, "%Y-%m-%d") if from_date else None
-            to_dt = datetime.strptime(to_date, "%Y-%m-%d") if to_date else None
             analysis = AnalysisResult(
                 user_id=user.id,
                 analysis_type="full_dashboard",
-                from_date=from_dt,
-                to_date=to_dt,
+                from_date=from_dt_cache,
+                to_date=to_dt_cache,
                 post_count=len(classified),
                 result_data=metrics,
                 created_at=datetime.utcnow(),
@@ -276,6 +281,52 @@ async def analyze_posts(
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@router.get("/date-range")
+async def get_date_range(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the min/max dates from all user's posts across all scrape sessions."""
+    result = await db.execute(
+        select(
+            func.min(Post.date).label("min_date"),
+            func.max(Post.date).label("max_date"),
+            func.count(Post.id).label("total_posts"),
+        ).where(Post.user_id == user.id)
+    )
+    row = result.one()
+    min_date = row.min_date
+    max_date = row.max_date
+    total_posts = row.total_posts
+
+    # Also get scrape session summary
+    sessions_result = await db.execute(
+        select(ScrapeSession)
+        .where(
+            ScrapeSession.user_id == user.id,
+            ScrapeSession.status == "completed",
+        )
+        .order_by(ScrapeSession.from_date.asc())
+    )
+    sessions = sessions_result.scalars().all()
+
+    return {
+        "status": "ok",
+        "min_date": min_date.strftime("%Y-%m-%d") if min_date else None,
+        "max_date": max_date.strftime("%Y-%m-%d") if max_date else None,
+        "total_posts": total_posts,
+        "scrape_sessions": [
+            {
+                "from_date": s.from_date.strftime("%Y-%m-%d") if s.from_date else None,
+                "to_date": s.to_date.strftime("%Y-%m-%d") if s.to_date else None,
+                "posts_scraped": s.posts_scraped or 0,
+                "completed_at": s.completed_at.isoformat() if s.completed_at else None,
+            }
+            for s in sessions
+        ],
+    }
 
 
 @router.get("/scrape-history")
