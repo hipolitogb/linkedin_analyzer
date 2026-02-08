@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar Sesión - LinkedIn Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen flex items-center justify-center">
+    <div class="w-full max-w-md mx-4">
+        <div class="text-center mb-8">
+            <a href="/" class="text-2xl font-bold text-blue-400">LinkedIn Analyzer</a>
+        </div>
+
+        <div class="bg-gray-900 rounded-xl p-8 border border-gray-800">
+            <h2 class="text-xl font-semibold mb-2">Iniciar Sesión</h2>
+            <p class="text-sm text-gray-400 mb-6">Te enviaremos un enlace de acceso a tu email.</p>
+
+            <!-- Error from redirect -->
+            <div id="error-banner" class="hidden bg-red-900/30 border border-red-800/50 text-red-300 text-sm rounded-lg p-3 mb-4"></div>
+
+            <!-- Success message -->
+            <div id="success-banner" class="hidden bg-emerald-900/30 border border-emerald-800/50 text-emerald-300 text-sm rounded-lg p-3 mb-4"></div>
+
+            <form id="login-form" onsubmit="handleLogin(event)">
+                <div class="mb-4">
+                    <label class="block text-sm text-gray-400 mb-1">Email</label>
+                    <input id="email" type="email" required
+                        class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition"
+                        placeholder="tu@email.com">
+                </div>
+                <button id="btn-login" type="submit"
+                    class="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-4 py-3 rounded-lg transition">
+                    Enviar enlace de acceso
+                </button>
+            </form>
+
+            <div class="mt-6 text-center text-sm text-gray-400">
+                ¿No tenés cuenta? <a href="/register" class="text-blue-400 hover:text-blue-300">Registrate</a>
+            </div>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const params = new URLSearchParams(window.location.search);
+    const error = params.get('error');
+    if (error) {
+        const banner = document.getElementById('error-banner');
+        banner.classList.remove('hidden');
+        const messages = {
+            'invalid_token': 'El enlace es inválido o expiró. Solicitá uno nuevo.',
+            'user_not_found': 'No encontramos una cuenta con ese email.',
+        };
+        banner.textContent = messages[error] || 'Ocurrió un error. Intentá de nuevo.';
+    }
+});
+
+async function handleLogin(e) {
+    e.preventDefault();
+    const email = document.getElementById('email').value.trim();
+    const btn = document.getElementById('btn-login');
+    const errorBanner = document.getElementById('error-banner');
+    const successBanner = document.getElementById('success-banner');
+
+    errorBanner.classList.add('hidden');
+    successBanner.classList.add('hidden');
+    btn.disabled = true;
+    btn.textContent = 'Enviando...';
+
+    try {
+        const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+
+        if (data.status === 'ok') {
+            successBanner.classList.remove('hidden');
+            successBanner.textContent = 'Te enviamos un enlace de acceso. Revisá tu email (y la carpeta de spam).';
+            btn.textContent = 'Enlace enviado';
+        } else {
+            errorBanner.classList.remove('hidden');
+            errorBanner.textContent = data.message || 'Error al enviar el enlace.';
+            btn.disabled = false;
+            btn.textContent = 'Enviar enlace de acceso';
+        }
+    } catch (err) {
+        errorBanner.classList.remove('hidden');
+        errorBanner.textContent = 'Error de conexión. Intentá de nuevo.';
+        btn.disabled = false;
+        btn.textContent = 'Enviar enlace de acceso';
+    }
+}
+</script>
+</body>
+</html>

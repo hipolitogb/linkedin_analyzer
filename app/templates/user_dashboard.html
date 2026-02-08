@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - LinkedIn Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        .loader { border: 3px solid #e5e7eb; border-top-color: #3b82f6; border-radius: 50%; width: 20px; height: 20px; animation: spin .8s linear infinite; display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .tag { display: inline-block; padding: 2px 10px; margin: 2px; border-radius: 9999px; font-size: 0.75rem; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+
+<!-- Navbar -->
+<nav class="bg-gray-900 border-b border-gray-800">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <span class="text-xl font-bold text-blue-400">LinkedIn Analyzer</span>
+            <span class="text-sm text-gray-400" id="nav-user-name"></span>
+        </div>
+        <div class="flex items-center gap-3">
+            <a href="/register" class="text-sm text-gray-300 hover:text-white transition">Nueva extracción</a>
+            <button onclick="logout()" class="text-sm text-gray-400 hover:text-red-400 transition">Cerrar sesión</button>
+        </div>
+    </div>
+</nav>
+
+<div class="max-w-7xl mx-auto px-4 py-8">
+
+    <!-- Date Filter + Controls -->
+    <div class="bg-gray-900 rounded-xl p-5 mb-8 border border-gray-800">
+        <div class="flex flex-wrap items-end gap-4">
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Desde</label>
+                <input id="filter-from" type="date" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Hasta</label>
+                <input id="filter-to" type="date" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+            </div>
+            <button onclick="loadMetrics()" class="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-lg text-sm font-medium transition">
+                Aplicar
+            </button>
+            <button id="btn-ai-analyze" onclick="runAIAnalysis()" class="bg-purple-600 hover:bg-purple-700 px-5 py-2 rounded-lg text-sm font-medium transition">
+                Analizar con IA
+            </button>
+        </div>
+        <div id="filter-status" class="text-sm text-gray-400 mt-2"></div>
+        <div id="analysis-progress" class="hidden mt-3">
+            <div class="flex items-center gap-3 text-sm text-gray-400">
+                <span class="loader"></span>
+                <span id="progress-text">Analizando...</span>
+            </div>
+            <div class="w-full bg-gray-800 rounded-full h-2 mt-2">
+                <div id="progress-bar" class="bg-blue-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div id="summary-cards" class="hidden grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+            <p class="text-gray-400 text-xs uppercase tracking-wide">Total Posts</p>
+            <p id="stat-total" class="text-2xl font-bold mt-1">0</p>
+        </div>
+        <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+            <p class="text-gray-400 text-xs uppercase tracking-wide">Total Reactions</p>
+            <p id="stat-reactions" class="text-2xl font-bold mt-1">0</p>
+        </div>
+        <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+            <p class="text-gray-400 text-xs uppercase tracking-wide">Total Comments</p>
+            <p id="stat-comments" class="text-2xl font-bold mt-1">0</p>
+        </div>
+        <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+            <p class="text-gray-400 text-xs uppercase tracking-wide">Avg Engagement</p>
+            <p id="stat-avg-eng" class="text-2xl font-bold mt-1">0</p>
+        </div>
+    </div>
+
+    <!-- Strategic Cards -->
+    <div id="strategic-cards" class="hidden grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div class="rounded-xl p-5 border border-blue-700/40 bg-gradient-to-br from-blue-900/60 to-blue-800/30">
+            <p class="text-blue-300 text-xs uppercase tracking-wide font-semibold mb-2">Alcance</p>
+            <p class="text-2xl font-bold text-white" id="card-alcance-impressions">0</p>
+            <p class="text-xs text-blue-300/70 mt-1">Total Impressions</p>
+            <div class="mt-3 pt-3 border-t border-blue-700/30">
+                <p class="text-sm text-blue-200"><span id="card-alcance-eng" class="font-semibold text-white">0</span> avg eng (non-link posts)</p>
+            </div>
+        </div>
+        <div class="rounded-xl p-5 border border-emerald-700/40 bg-gradient-to-br from-emerald-900/60 to-emerald-800/30">
+            <p class="text-emerald-300 text-xs uppercase tracking-wide font-semibold mb-2">Negocio</p>
+            <p class="text-2xl font-bold text-white" id="card-negocio-ratio">0</p>
+            <p class="text-xs text-emerald-300/70 mt-1">Conversation Ratio (link posts)</p>
+            <div class="mt-3 pt-3 border-t border-emerald-700/30">
+                <p class="text-sm text-emerald-200"><span id="card-negocio-count" class="font-semibold text-white">0</span> conversion posts</p>
+            </div>
+        </div>
+        <div class="rounded-xl p-5 border border-purple-700/40 bg-gradient-to-br from-purple-900/60 to-purple-800/30">
+            <p class="text-purple-300 text-xs uppercase tracking-wide font-semibold mb-2">Autoridad</p>
+            <p class="text-lg font-bold text-white" id="card-autoridad-topic">&mdash;</p>
+            <p class="text-xs text-purple-300/70 mt-1">Best Topic &middot; <span id="card-autoridad-eng">0</span> median eng</p>
+            <div class="mt-3 pt-3 border-t border-purple-700/30">
+                <p class="text-sm text-purple-200"><span id="card-autoridad-tl" class="font-semibold text-white">0%</span> thought leadership</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Grid -->
+    <div id="charts-section" class="hidden">
+        <!-- Funnel Analysis -->
+        <div id="funnel-section" class="hidden mb-6">
+            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <h3 class="text-sm font-medium text-gray-300 mb-4">Funnel Analysis &mdash; Awareness vs Conversion</h3>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div><canvas id="chart-funnel"></canvas></div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-gray-800">
+                                    <th class="text-left py-2 pr-4">Stage</th>
+                                    <th class="text-right py-2 pr-4">Posts</th>
+                                    <th class="text-right py-2 pr-4">Median Eng</th>
+                                    <th class="text-right py-2 pr-4">Conv. Ratio</th>
+                                    <th class="text-right py-2">Avg Impressions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="funnel-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800 lg:col-span-2">
+                <h3 class="text-sm font-medium text-gray-300 mb-3">Posts, Engagement e Impresiones por Mes</h3>
+                <canvas id="chart-month"></canvas>
+            </div>
+            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <h3 class="text-sm font-medium text-gray-300 mb-3">Best Day to Post</h3>
+                <canvas id="chart-day"></canvas>
+            </div>
+            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <h3 class="text-sm font-medium text-gray-300 mb-3">Best Hour to Post</h3>
+                <canvas id="chart-hour"></canvas>
+            </div>
+            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <h3 class="text-sm font-medium text-gray-300 mb-3">Content Type Distribution</h3>
+                <canvas id="chart-content-type"></canvas>
+            </div>
+            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <h3 class="text-sm font-medium text-gray-300 mb-3">Avg Engagement by Content Type</h3>
+                <canvas id="chart-eng-type"></canvas>
+            </div>
+            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <h3 class="text-sm font-medium text-gray-300 mb-3">Image vs No Image (Avg Engagement)</h3>
+                <canvas id="chart-image-eng"></canvas>
+            </div>
+            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <h3 class="text-sm font-medium text-gray-300 mb-3">Post Length vs Engagement</h3>
+                <canvas id="chart-scatter"></canvas>
+            </div>
+            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <h3 class="text-sm font-medium text-gray-300 mb-3">Post Categories</h3>
+                <canvas id="chart-categories"></canvas>
+            </div>
+            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <h3 class="text-sm font-medium text-gray-300 mb-3">Sentiment Analysis</h3>
+                <canvas id="chart-sentiment"></canvas>
+            </div>
+            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <h3 class="text-sm font-medium text-gray-300 mb-3">Image Type Distribution</h3>
+                <canvas id="chart-image-type"></canvas>
+            </div>
+            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <h3 class="text-sm font-medium text-gray-300 mb-3">Post Length Distribution</h3>
+                <canvas id="chart-length"></canvas>
+            </div>
+        </div>
+
+        <!-- Day x Hour Heatmap -->
+        <div id="heatmap-section" class="hidden mb-6">
+            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <h3 class="text-sm font-medium text-gray-300 mb-4">Engagement Heatmap &mdash; Day x Hour</h3>
+                <div class="overflow-x-auto">
+                    <div id="heatmap-grid" style="display:grid; grid-template-columns: 50px repeat(24, 1fr); gap: 2px; font-size: 0.65rem;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Keywords -->
+        <div id="keywords-section" class="bg-gray-900 rounded-xl p-5 border border-gray-800 mb-6 hidden">
+            <h3 class="text-sm font-medium text-gray-300 mb-3">Top Keywords / Topics</h3>
+            <div id="keywords-cloud" class="flex flex-wrap gap-1"></div>
+        </div>
+
+        <!-- Topic Matrix -->
+        <div id="topic-matrix-section" class="hidden mb-6">
+            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
+                <h3 class="text-sm font-medium text-gray-300 mb-4">Topic Performance Matrix</h3>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div><canvas id="chart-topic-matrix"></canvas></div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-gray-800">
+                                    <th class="text-left py-2 pr-4">Topic</th>
+                                    <th class="text-right py-2 pr-4">Posts</th>
+                                    <th class="text-right py-2 pr-4">Median Eng</th>
+                                    <th class="text-right py-2">Avg Impressions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="topic-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Deep Pattern Analysis -->
+        <div id="pattern-section" class="hidden mb-6 space-y-6">
+            <div id="executive-summary" class="bg-gradient-to-r from-blue-900/40 to-purple-900/40 rounded-xl p-6 border border-blue-800/50">
+                <h3 class="text-lg font-semibold text-blue-300 mb-2">Resumen Ejecutivo</h3>
+                <div id="summary-text" class="text-gray-200 leading-relaxed whitespace-pre-line"></div>
+            </div>
+            <div id="data-cleaning-section" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
+                <h3 class="text-lg font-semibold text-cyan-400 mb-4">Datos Limpios vs Dashboard</h3>
+                <div id="data-cleaning-content" class="space-y-4"></div>
+            </div>
+            <div id="what-works-section" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
+                <h3 class="text-lg font-semibold text-emerald-400 mb-4">Qu&eacute; Funciona</h3>
+                <div id="what-works-content" class="space-y-3"></div>
+            </div>
+            <div id="what-fails-section" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
+                <h3 class="text-lg font-semibold text-red-400 mb-4">Qu&eacute; No Funciona</h3>
+                <div id="what-fails-content" class="space-y-3"></div>
+            </div>
+            <div id="optimal-formula-section" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
+                <h3 class="text-lg font-semibold text-blue-400 mb-4">F&oacute;rmula &Oacute;ptima</h3>
+                <div id="optimal-formula-content"></div>
+            </div>
+            <div id="trend-alert-section" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
+                <h3 class="text-lg font-semibold text-amber-400 mb-4">Tendencia y Alerta</h3>
+                <div id="trend-alert-content" class="space-y-3"></div>
+            </div>
+            <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                <h3 class="text-lg font-semibold text-yellow-400 mb-4">Patrones Ocultos</h3>
+                <div id="patterns-list" class="space-y-4"></div>
+            </div>
+            <div id="formula-section-legacy" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
+                <h3 class="text-lg font-semibold text-emerald-400 mb-4">Formula de Contenido</h3>
+                <div id="formula-content" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+            </div>
+            <div id="drivers-section-legacy" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
+                <h3 class="text-lg font-semibold text-cyan-400 mb-4">Drivers de Engagement</h3>
+                <div id="drivers-list" class="space-y-3"></div>
+            </div>
+            <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                <h3 class="text-lg font-semibold text-purple-400 mb-4">Recomendaciones Estrat&eacute;gicas</h3>
+                <div id="recommendations-list" class="space-y-3"></div>
+            </div>
+            <div id="anomalies-section" class="bg-gray-900 rounded-xl p-6 border border-gray-800 hidden">
+                <h3 class="text-lg font-semibold text-orange-400 mb-4">Anomal&iacute;as</h3>
+                <div id="anomalies-list" class="space-y-2"></div>
+            </div>
+        </div>
+
+        <!-- Top Posts Table -->
+        <div class="bg-gray-900 rounded-xl p-5 border border-gray-800 mb-8">
+            <h3 class="text-sm font-medium text-gray-300 mb-3">Top Posts by Engagement</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-gray-400 border-b border-gray-800">
+                            <th class="text-left py-2 pr-4">#</th>
+                            <th class="text-left py-2 pr-4">Date</th>
+                            <th class="text-left py-2 pr-4">Type</th>
+                            <th class="text-left py-2 pr-4 min-w-[300px]">Text</th>
+                            <th class="text-right py-2 pr-4">Reactions</th>
+                            <th class="text-right py-2 pr-4">Comments</th>
+                            <th class="text-right py-2 pr-4">Impressions</th>
+                            <th class="text-right py-2">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody id="posts-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Drill-down Modal -->
+<div id="drilldown-modal" class="fixed inset-0 bg-black/70 z-50 hidden flex items-start justify-center pt-12 overflow-y-auto">
+    <div class="bg-gray-900 rounded-xl border border-gray-700 w-full max-w-5xl mx-4 mb-12">
+        <div class="flex items-center justify-between p-5 border-b border-gray-800">
+            <h3 id="drilldown-title" class="text-lg font-semibold text-gray-200"></h3>
+            <button onclick="closeDrilldown()" class="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
+        </div>
+        <div class="p-5 overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-gray-400 border-b border-gray-800">
+                        <th class="text-left py-2 pr-4">#</th>
+                        <th class="text-left py-2 pr-4">Date</th>
+                        <th class="text-left py-2 pr-4">Type</th>
+                        <th class="text-left py-2 pr-4 min-w-[250px]">Text</th>
+                        <th class="text-right py-2 pr-4">Reactions</th>
+                        <th class="text-right py-2 pr-4">Comments</th>
+                        <th class="text-right py-2 pr-4">Engagement</th>
+                        <th class="text-right py-2 pr-4 cursor-pointer hover:text-emerald-400" onclick="toggleDrilldownSort()" id="drilldown-imp-header">Impressions &#x25BC;</th>
+                    </tr>
+                </thead>
+                <tbody id="drilldown-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// Auth & Data Loading (new for multi-tenant)
+// ══════════════════════════════════════════════════════
+
+function setFilterStatus(msg, loading = false) {
+    document.getElementById('filter-status').innerHTML = loading ? `<span class="loader"></span> ${msg}` : msg;
+}
+
+async function loadUserInfo() {
+    try {
+        const res = await fetch('/api/auth/me');
+        const data = await res.json();
+        if (data.status === 'ok') {
+            document.getElementById('nav-user-name').textContent =
+                `${data.user.first_name} ${data.user.last_name}`;
+        } else {
+            window.location.href = '/login';
+        }
+    } catch (e) {
+        window.location.href = '/login';
+    }
+}
+
+async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.location.href = '/';
+}
+
+async function loadMetrics() {
+    const fromDate = document.getElementById('filter-from').value;
+    const toDate = document.getElementById('filter-to').value;
+    setFilterStatus('Calculando métricas...', true);
+
+    try {
+        const res = await fetch('/api/dashboard/metrics', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ from_date: fromDate || null, to_date: toDate || null })
+        });
+        const data = await res.json();
+        if (data.status === 'ok') {
+            setFilterStatus('');
+            renderDashboard(data.metrics);
+        } else {
+            setFilterStatus(data.message || 'No hay datos para este rango.');
+        }
+    } catch (e) {
+        setFilterStatus(`Error: ${e.message}`);
+    }
+}
+
+async function runAIAnalysis() {
+    const fromDate = document.getElementById('filter-from').value;
+    const toDate = document.getElementById('filter-to').value;
+
+    document.getElementById('btn-ai-analyze').disabled = true;
+    document.getElementById('analysis-progress').classList.remove('hidden');
+    document.getElementById('progress-text').textContent = 'Iniciando análisis con IA...';
+    document.getElementById('progress-bar').style.width = '0%';
+    setFilterStatus('');
+
+    try {
+        const res = await fetch('/api/dashboard/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ from_date: fromDate || null, to_date: toDate || null })
+        });
+
+        const contentType = res.headers.get('content-type') || '';
+
+        if (contentType.includes('text/event-stream')) {
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let finalMetrics = null;
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    const payload = line.slice(6).trim();
+                    if (payload === '[DONE]') continue;
+                    try {
+                        const msg = JSON.parse(payload);
+                        if (msg.heartbeat) continue;
+                        if (msg.phase) {
+                            document.getElementById('progress-text').textContent = msg.message;
+                            if (msg.phase === 'patterns') {
+                                document.getElementById('progress-bar').style.width = '100%';
+                            }
+                        }
+                        if (msg.current && msg.total) {
+                            const pct = Math.round((msg.current / msg.total) * 100);
+                            document.getElementById('progress-bar').style.width = pct + '%';
+                            document.getElementById('progress-text').textContent =
+                                `Clasificando post ${msg.current}/${msg.total}${msg.cached ? ' (cached)' : ''}...`;
+                        }
+                        if (msg.status === 'ok' && msg.metrics) {
+                            finalMetrics = msg.metrics;
+                        }
+                    } catch (e) { /* skip */ }
+                }
+            }
+
+            document.getElementById('analysis-progress').classList.add('hidden');
+            if (finalMetrics) {
+                renderDashboard(finalMetrics);
+            } else {
+                setFilterStatus('Análisis completado pero sin resultados.');
+            }
+        } else {
+            const data = await res.json();
+            document.getElementById('analysis-progress').classList.add('hidden');
+            if (data.status === 'ok') {
+                renderDashboard(data.metrics);
+                if (data.cached) setFilterStatus('Resultados desde caché.');
+            } else {
+                setFilterStatus(data.message || 'Error en análisis.');
+            }
+        }
+    } catch (e) {
+        document.getElementById('analysis-progress').classList.add('hidden');
+        setFilterStatus(`Error: ${e.message}`);
+    }
+
+    document.getElementById('btn-ai-analyze').disabled = false;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadUserInfo();
+
+    // Default date range: 12 months ago to today
+    const today = new Date();
+    const fromDate = new Date(today);
+    fromDate.setFullYear(fromDate.getFullYear() - 1);
+    document.getElementById('filter-to').value = today.toISOString().slice(0, 10);
+    document.getElementById('filter-from').value = fromDate.toISOString().slice(0, 10);
+
+    // Auto-load metrics
+    loadMetrics();
+});
+
+// ══════════════════════════════════════════════════════
+// Chart rendering (preserved verbatim from original dashboard)
+// ══════════════════════════════════════════════════════
+
+const COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#f97316','#84cc16','#6366f1'];
+const chartDefaults = {
+    responsive: true,
+    plugins: { legend: { labels: { color: '#9ca3af', font: { size: 11 } } } },
+    scales: {
+        x: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { color: '#1f2937' } },
+        y: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { color: '#1f2937' } }
+    }
+};
+const pieDefaults = {
+    responsive: true,
+    plugins: { legend: { position: 'right', labels: { color: '#9ca3af', font: { size: 11 }, padding: 12 } } }
+};
+let charts = {};
+
+function destroyCharts() { Object.values(charts).forEach(c => c.destroy()); charts = {}; }
+
+function renderDashboard(m) {
+    destroyCharts();
+
+    // Summary
+    document.getElementById('summary-cards').classList.remove('hidden');
+    document.getElementById('stat-total').textContent = m.total_posts;
+    document.getElementById('stat-reactions').textContent = (m.total_reactions || 0).toLocaleString();
+    document.getElementById('stat-comments').textContent = (m.total_comments || 0).toLocaleString();
+    document.getElementById('stat-avg-eng').textContent = m.avg_engagement || 0;
+
+    document.getElementById('charts-section').classList.remove('hidden');
+
+    // Combined monthly chart
+    {
+        const monthDatasets = [
+            { label: 'Posts', data: m.posts_by_month.values, backgroundColor: 'rgba(59,130,246,0.7)', borderColor: '#3b82f6', borderWidth: 1, type: 'bar', yAxisID: 'y', order: 2 }
+        ];
+        const monthScales = {
+            x: { ...chartDefaults.scales.x },
+            y: {
+                position: 'left',
+                title: { display: true, text: 'Posts', color: '#3b82f6' },
+                ticks: { color: '#3b82f6', font: { size: 10 }, stepSize: 1 },
+                grid: { color: '#1f2937' },
+                beginAtZero: true,
+            },
+        };
+        if (m.engagement_evolution) {
+            monthDatasets.push({
+                label: 'Avg Engagement', data: m.engagement_evolution.values,
+                borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.1)',
+                type: 'line', fill: false, tension: 0.3, yAxisID: 'y1', order: 1, pointRadius: 3
+            });
+            monthScales.y1 = {
+                position: 'right',
+                title: { display: true, text: 'Avg Engagement', color: '#f59e0b' },
+                ticks: { color: '#f59e0b', font: { size: 10 } },
+                grid: { drawOnChartArea: false },
+                beginAtZero: true,
+            };
+            if (m.engagement_evolution.impressions && m.engagement_evolution.impressions.some(v => v > 0)) {
+                monthDatasets.push({
+                    label: 'Avg Impressions', data: m.engagement_evolution.impressions,
+                    borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)',
+                    type: 'line', fill: false, tension: 0.3, yAxisID: 'y2', order: 0, pointRadius: 3, borderDash: [5, 3]
+                });
+                monthScales.y2 = {
+                    position: 'right',
+                    title: { display: true, text: 'Avg Impressions', color: '#10b981' },
+                    ticks: { color: '#10b981', font: { size: 10 } },
+                    grid: { drawOnChartArea: false },
+                    beginAtZero: true,
+                };
+            }
+        }
+        charts.month = new Chart(document.getElementById('chart-month'), {
+            type: 'bar',
+            data: { labels: m.posts_by_month.labels, datasets: monthDatasets },
+            options: {
+                responsive: true,
+                plugins: { legend: { labels: { color: '#9ca3af', font: { size: 11 } } } },
+                scales: monthScales,
+                interaction: { mode: 'index', intersect: false },
+            }
+        });
+    }
+
+    // Best day
+    charts.day = new Chart(document.getElementById('chart-day'), {
+        type: 'bar',
+        data: {
+            labels: m.posts_by_day.labels,
+            datasets: [
+                { label: 'Posts', data: m.posts_by_day.values, backgroundColor: '#8b5cf6' },
+                ...(m.posts_by_day.avg_engagement ? [{ label: 'Avg Engagement', data: m.posts_by_day.avg_engagement, backgroundColor: '#f59e0b', yAxisID: 'y1' }] : [])
+            ]
+        },
+        options: { ...chartDefaults, scales: { ...chartDefaults.scales, y1: { position: 'right', ticks: { color: '#6b7280' }, grid: { display: false } } } }
+    });
+
+    // Best hour
+    charts.hour = new Chart(document.getElementById('chart-hour'), {
+        type: 'bar',
+        data: {
+            labels: m.posts_by_hour.labels.map(h => `${h}:00`),
+            datasets: [
+                { label: 'Posts', data: m.posts_by_hour.values, backgroundColor: '#06b6d4' },
+                ...(m.posts_by_hour.avg_engagement ? [{ label: 'Avg Engagement', data: m.posts_by_hour.avg_engagement, backgroundColor: '#f97316', yAxisID: 'y1' }] : [])
+            ]
+        },
+        options: { ...chartDefaults, scales: { ...chartDefaults.scales, y1: { position: 'right', ticks: { color: '#6b7280' }, grid: { display: false } } } }
+    });
+
+    // Content type
+    charts.contentType = new Chart(document.getElementById('chart-content-type'), {
+        type: 'doughnut',
+        data: { labels: m.content_types.labels, datasets: [{ data: m.content_types.values, backgroundColor: COLORS }] },
+        options: pieDefaults
+    });
+
+    // Engagement by type
+    if (m.engagement_by_type) {
+        charts.engType = new Chart(document.getElementById('chart-eng-type'), {
+            type: 'bar',
+            data: { labels: m.engagement_by_type.labels, datasets: [{ label: 'Avg Engagement', data: m.engagement_by_type.values, backgroundColor: COLORS }] },
+            options: chartDefaults
+        });
+    }
+
+    // Image vs no image
+    if (m.image_engagement) {
+        charts.imageEng = new Chart(document.getElementById('chart-image-eng'), {
+            type: 'bar',
+            data: {
+                labels: m.image_engagement.labels.map((l, i) => `${l} (${m.image_engagement.counts[i]})`),
+                datasets: [{ label: 'Avg Engagement', data: m.image_engagement.values, backgroundColor: ['#3b82f6', '#6b7280'] }]
+            },
+            options: chartDefaults
+        });
+    }
+
+    // Scatter: length vs engagement
+    if (m.length_vs_engagement) {
+        charts.scatter = new Chart(document.getElementById('chart-scatter'), {
+            type: 'scatter',
+            data: { datasets: [{ label: 'Posts', data: m.length_vs_engagement, backgroundColor: 'rgba(59,130,246,0.5)', pointRadius: 4 }] },
+            options: { ...chartDefaults, scales: {
+                x: { ...chartDefaults.scales.x, title: { display: true, text: 'Text Length (chars)', color: '#9ca3af' } },
+                y: { ...chartDefaults.scales.y, title: { display: true, text: 'Engagement', color: '#9ca3af' } }
+            }}
+        });
+    }
+
+    // Categories
+    if (m.categories && m.categories.labels.length > 0 && !(m.categories.labels.length === 1 && m.categories.labels[0] === 'other')) {
+        charts.categories = new Chart(document.getElementById('chart-categories'), {
+            type: 'doughnut',
+            data: { labels: m.categories.labels, datasets: [{ data: m.categories.values, backgroundColor: COLORS }] },
+            options: pieDefaults
+        });
+    }
+
+    // Sentiment
+    const sentimentColors = { positive: '#10b981', neutral: '#6b7280', negative: '#ef4444', inspirational: '#8b5cf6', controversial: '#f59e0b' };
+    if (m.sentiments && m.sentiments.labels.length > 0 && !(m.sentiments.labels.length === 1 && m.sentiments.labels[0] === 'neutral')) {
+        charts.sentiment = new Chart(document.getElementById('chart-sentiment'), {
+            type: 'doughnut',
+            data: { labels: m.sentiments.labels, datasets: [{ data: m.sentiments.values, backgroundColor: m.sentiments.labels.map(l => sentimentColors[l] || '#6b7280') }] },
+            options: pieDefaults
+        });
+    }
+
+    // Image type
+    if (m.image_types && m.image_types.labels.length > 0) {
+        charts.imageType = new Chart(document.getElementById('chart-image-type'), {
+            type: 'doughnut',
+            data: { labels: m.image_types.labels, datasets: [{ data: m.image_types.values, backgroundColor: COLORS }] },
+            options: pieDefaults
+        });
+    }
+
+    // Length buckets
+    if (m.length_buckets) {
+        charts.length = new Chart(document.getElementById('chart-length'), {
+            type: 'bar',
+            data: { labels: m.length_buckets.labels, datasets: [{ label: 'Posts', data: m.length_buckets.values, backgroundColor: '#f59e0b' }] },
+            options: chartDefaults
+        });
+    }
+
+    // Keywords
+    const kwContainer = document.getElementById('keywords-cloud');
+    kwContainer.innerHTML = '';
+    if (m.top_keywords && m.top_keywords.length > 0) {
+        document.getElementById('keywords-section').classList.remove('hidden');
+        const maxCount = Math.max(...m.top_keywords.map(k => k.count), 1);
+        m.top_keywords.forEach((kw, i) => {
+            const size = 0.7 + (kw.count / maxCount) * 0.8;
+            const span = document.createElement('span');
+            span.className = 'tag';
+            span.style.fontSize = `${size}rem`;
+            span.style.backgroundColor = COLORS[i % COLORS.length] + '22';
+            span.style.color = COLORS[i % COLORS.length];
+            span.style.border = `1px solid ${COLORS[i % COLORS.length]}44`;
+            span.textContent = `${kw.text} (${kw.count})`;
+            kwContainer.appendChild(span);
+        });
+    }
+
+    // Strategic Cards
+    if (m.strategic_cards) {
+        document.getElementById('strategic-cards').classList.remove('hidden');
+        const sc = m.strategic_cards;
+        document.getElementById('card-alcance-impressions').textContent = (sc.alcance.total_impressions || 0).toLocaleString();
+        document.getElementById('card-alcance-eng').textContent = sc.alcance.avg_engagement_no_link || 0;
+        document.getElementById('card-negocio-ratio').textContent = sc.negocio.conversation_ratio || 0;
+        document.getElementById('card-negocio-count').textContent = sc.negocio.conversion_count || 0;
+        document.getElementById('card-autoridad-topic').textContent = sc.autoridad.best_topic || '\u2014';
+        document.getElementById('card-autoridad-eng').textContent = sc.autoridad.best_topic_median_eng || 0;
+        document.getElementById('card-autoridad-tl').textContent = (sc.autoridad.thought_leadership_share || 0) + '%';
+    }
+
+    // Funnel Analysis
+    if (m.funnel_analysis) {
+        document.getElementById('funnel-section').classList.remove('hidden');
+        const fa = m.funnel_analysis;
+        const stages = Object.keys(fa);
+        const stageLabels = stages.map(s => s.charAt(0).toUpperCase() + s.slice(1));
+        const stageColors = stages.map(s => s === 'awareness' ? '#3b82f6' : '#10b981');
+
+        charts.funnel = new Chart(document.getElementById('chart-funnel'), {
+            type: 'bar',
+            data: {
+                labels: stageLabels,
+                datasets: [
+                    { label: 'Posts', data: stages.map(s => fa[s].count), backgroundColor: stageColors.map(c => c + 'aa'), yAxisID: 'y' },
+                    { label: 'Median Eng', data: stages.map(s => fa[s].median_engagement), backgroundColor: stageColors.map(c => c + '55'), borderColor: stageColors, borderWidth: 2, yAxisID: 'y1' }
+                ]
+            },
+            options: { ...chartDefaults, scales: { ...chartDefaults.scales, y1: { position: 'right', ticks: { color: '#6b7280' }, grid: { display: false } } } }
+        });
+
+        const ftb = document.getElementById('funnel-table-body');
+        ftb.innerHTML = '';
+        stages.forEach(s => {
+            const d = fa[s];
+            const tr = document.createElement('tr');
+            tr.className = 'border-b border-gray-800/50';
+            tr.innerHTML = `
+                <td class="py-2 pr-4 font-medium ${s === 'awareness' ? 'text-blue-400' : 'text-emerald-400'}">${s.charAt(0).toUpperCase() + s.slice(1)}</td>
+                <td class="py-2 pr-4 text-right">${d.count}</td>
+                <td class="py-2 pr-4 text-right">${d.median_engagement}</td>
+                <td class="py-2 pr-4 text-right">${d.conversation_ratio}</td>
+                <td class="py-2 text-right">${(d.avg_impressions || 0).toLocaleString()}</td>
+            `;
+            ftb.appendChild(tr);
+        });
+    }
+
+    // Day x Hour Heatmap
+    if (m.day_hour_heatmap && m.day_hour_heatmap.data) {
+        document.getElementById('heatmap-section').classList.remove('hidden');
+        const hm = m.day_hour_heatmap;
+        const grid = document.getElementById('heatmap-grid');
+        grid.innerHTML = '';
+
+        const corner = document.createElement('div');
+        corner.style.cssText = 'display:flex;align-items:end;justify-content:center;color:#6b7280;padding:2px;';
+        grid.appendChild(corner);
+        for (let h = 0; h < 24; h++) {
+            const cell = document.createElement('div');
+            cell.style.cssText = 'text-align:center;color:#6b7280;padding:2px;';
+            cell.textContent = h + ':00';
+            grid.appendChild(cell);
+        }
+
+        const maxVal = hm.max_value || 1;
+        hm.day_labels.forEach((dayLabel, wd) => {
+            const label = document.createElement('div');
+            label.style.cssText = 'display:flex;align-items:center;justify-content:end;color:#9ca3af;padding:2px 6px;font-weight:500;';
+            label.textContent = dayLabel;
+            grid.appendChild(label);
+            for (let hr = 0; hr < 24; hr++) {
+                const entry = hm.data.find(d => d.day === wd && d.hour === hr);
+                const val = entry ? entry.value : 0;
+                const intensity = maxVal > 0 ? val / maxVal : 0;
+                const cell = document.createElement('div');
+                const r = Math.round(31 + (16 - 31) * intensity);
+                const g = Math.round(41 + (185 - 41) * intensity);
+                const b = Math.round(55 + (129 - 55) * intensity);
+                const alpha = 0.15 + intensity * 0.85;
+                cell.style.cssText = `background:rgba(${r},${g},${b},${alpha});color:${intensity > 0.5 ? '#fff' : '#9ca3af'};text-align:center;padding:4px 2px;border-radius:3px;cursor:default;font-size:0.6rem;`;
+                cell.textContent = val > 0 ? val : '';
+                cell.title = `${dayLabel} ${hr}:00 \u2014 Avg Engagement: ${val}`;
+                grid.appendChild(cell);
+            }
+        });
+    }
+
+    // Topic Matrix
+    if (m.topic_matrix && m.topic_matrix.length > 0) {
+        document.getElementById('topic-matrix-section').classList.remove('hidden');
+        const tm = m.topic_matrix;
+        const topicLabels = tm.map(t => t.topic);
+        const topicEngs = tm.map(t => t.median_engagement);
+
+        charts.topicMatrix = new Chart(document.getElementById('chart-topic-matrix'), {
+            type: 'bar',
+            data: {
+                labels: topicLabels,
+                datasets: [{ label: 'Median Engagement', data: topicEngs, backgroundColor: COLORS.slice(0, tm.length) }]
+            },
+            options: { ...chartDefaults, indexAxis: 'y', plugins: { legend: { display: false } } }
+        });
+
+        const ttb = document.getElementById('topic-table-body');
+        ttb.innerHTML = '';
+        tm.forEach((t, i) => {
+            const tr = document.createElement('tr');
+            tr.className = 'border-b border-gray-800/50';
+            tr.innerHTML = `
+                <td class="py-2 pr-4"><span class="inline-block w-2 h-2 rounded-full mr-2" style="background:${COLORS[i % COLORS.length]}"></span>${t.topic}</td>
+                <td class="py-2 pr-4 text-right">${t.count}</td>
+                <td class="py-2 pr-4 text-right font-medium text-emerald-400">${t.median_engagement}</td>
+                <td class="py-2 text-right">${(t.avg_impressions || 0).toLocaleString()}</td>
+            `;
+            ttb.appendChild(tr);
+        });
+    }
+
+    // Setup drill-down click handlers
+    setupDrilldownHandlers(m);
+
+    // Deep Pattern Analysis
+    renderPatternAnalysis(m.pattern_analysis);
+
+    // Top posts table
+    const tbody = document.getElementById('posts-body');
+    tbody.innerHTML = '';
+    (m.top_posts || []).forEach((p, i) => {
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-gray-800/50 hover:bg-gray-800/30';
+        const catBadge = p.category ? `<span class="tag bg-purple-500/20 text-purple-400 border border-purple-500/30 text-xs">${p.category}</span>` : '';
+        const textCell = p.url
+            ? `<a href="${p.url}" target="_blank" rel="noopener" class="text-blue-400 hover:text-blue-300 hover:underline">${p.text}</a>`
+            : p.text;
+        tr.innerHTML = `
+            <td class="py-2 pr-4 text-gray-400">${i + 1}</td>
+            <td class="py-2 pr-4 whitespace-nowrap">${p.date}</td>
+            <td class="py-2 pr-4"><span class="tag bg-blue-500/20 text-blue-400 border border-blue-500/30">${p.content_type}</span> ${catBadge}</td>
+            <td class="py-2 pr-4 text-gray-300">${textCell}</td>
+            <td class="py-2 pr-4 text-right">${p.reactions}</td>
+            <td class="py-2 pr-4 text-right">${p.comments}</td>
+            <td class="py-2 pr-4 text-right">${(p.impressions || 0).toLocaleString()}</td>
+            <td class="py-2 text-right font-medium text-emerald-400">${p.engagement}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function renderPatternAnalysis(pa) {
+    if (!pa || pa.error) {
+        document.getElementById('pattern-section').classList.add('hidden');
+        return;
+    }
+    document.getElementById('pattern-section').classList.remove('hidden');
+    const isNewFormat = !!pa.data_cleaning || !!pa.what_works || !!pa.trend_alert;
+
+    document.getElementById('summary-text').textContent = pa.executive_summary || '';
+
+    if (isNewFormat) {
+        if (pa.data_cleaning) {
+            const sec = document.getElementById('data-cleaning-section');
+            sec.classList.remove('hidden');
+            const content = document.getElementById('data-cleaning-content');
+            const dc = pa.data_cleaning;
+            const raw = pa._raw_stats?.outliers || {};
+            let statsHtml = '';
+            if (raw.with_outliers && raw.without_outliers) {
+                statsHtml = `
+                    <div class="grid grid-cols-2 gap-4 mt-3">
+                        <div class="bg-gray-800/60 rounded-lg p-3">
+                            <p class="text-xs text-gray-400 mb-2 font-semibold uppercase">Con outliers</p>
+                            <p class="text-sm text-gray-300">Media: ${raw.with_outliers.mean} &middot; Mediana: ${raw.with_outliers.median}</p>
+                            <p class="text-xs text-gray-500">P25: ${raw.with_outliers.p25} &middot; P75: ${raw.with_outliers.p75} &middot; P90: ${raw.with_outliers.p90}</p>
+                        </div>
+                        <div class="bg-gray-800/60 rounded-lg p-3">
+                            <p class="text-xs text-gray-400 mb-2 font-semibold uppercase">Sin outliers</p>
+                            <p class="text-sm text-gray-300">Media: ${raw.without_outliers.mean} &middot; Mediana: ${raw.without_outliers.median}</p>
+                            <p class="text-xs text-gray-500">P25: ${raw.without_outliers.p25} &middot; P75: ${raw.without_outliers.p75} &middot; P90: ${raw.without_outliers.p90}</p>
+                        </div>
+                    </div>`;
+            }
+            content.innerHTML = `
+                <div class="bg-cyan-900/15 rounded-lg p-4 border border-cyan-800/30">
+                    <h4 class="text-sm font-semibold text-cyan-300 mb-2">Outliers detectados: ${raw.count || 0} (umbral: ${raw.threshold || '?'})</h4>
+                    <p class="text-sm text-gray-300">${dc.outliers_found || ''}</p>
+                    ${statsHtml}
+                </div>
+                <div class="bg-gray-800/40 rounded-lg p-4 border border-gray-700/30">
+                    <h4 class="text-sm font-semibold text-gray-300 mb-2">Dashboard naive vs limpio</h4>
+                    <p class="text-sm text-gray-400">${dc.naive_vs_clean || ''}</p>
+                </div>
+            `;
+        }
+
+        if (pa.what_works) {
+            const sec = document.getElementById('what-works-section');
+            sec.classList.remove('hidden');
+            const content = document.getElementById('what-works-content');
+            const ww = pa.what_works;
+            const items = [
+                { label: 'Formato', text: ww.format, icon: 'text-blue-400' },
+                { label: 'Longitud', text: ww.length, icon: 'text-emerald-400' },
+                { label: 'Menciones', text: ww.mentions, icon: 'text-purple-400' },
+                { label: 'Keywords', text: ww.keywords, icon: 'text-amber-400' },
+                { label: 'Otros factores', text: ww.other_factors, icon: 'text-cyan-400' },
+            ];
+            content.innerHTML = items.filter(i => i.text).map(i => `
+                <div class="bg-emerald-900/10 rounded-lg p-3 border border-emerald-800/20">
+                    <span class="text-xs font-semibold ${i.icon} uppercase">${i.label}</span>
+                    <p class="text-sm text-gray-300 mt-1">${i.text}</p>
+                </div>
+            `).join('');
+        }
+
+        if (pa.what_fails) {
+            const sec = document.getElementById('what-fails-section');
+            sec.classList.remove('hidden');
+            const content = document.getElementById('what-fails-content');
+            const wf = pa.what_fails;
+            content.innerHTML = `
+                ${wf.penalties ? `<div class="bg-red-900/10 rounded-lg p-3 border border-red-800/20">
+                    <span class="text-xs font-semibold text-red-400 uppercase">Penalizaciones</span>
+                    <p class="text-sm text-gray-300 mt-1">${wf.penalties}</p>
+                </div>` : ''}
+                ${wf.low_performer_patterns ? `<div class="bg-red-900/10 rounded-lg p-3 border border-red-800/20">
+                    <span class="text-xs font-semibold text-red-400 uppercase">Patrones de bajo rendimiento</span>
+                    <p class="text-sm text-gray-300 mt-1">${wf.low_performer_patterns}</p>
+                </div>` : ''}
+            `;
+        }
+
+        if (pa.optimal_formula) {
+            const sec = document.getElementById('optimal-formula-section');
+            sec.classList.remove('hidden');
+            const content = document.getElementById('optimal-formula-content');
+            const of = pa.optimal_formula;
+            content.innerHTML = `
+                <div class="bg-blue-900/15 rounded-lg p-4 border border-blue-800/30">
+                    <p class="text-sm text-gray-200 leading-relaxed">${of.description || ''}</p>
+                    ${of.matching_posts ? `<p class="text-xs text-blue-400 mt-3">Posts que coinciden: ${of.matching_posts}</p>` : ''}
+                </div>
+            `;
+        }
+
+        if (pa.trend_alert) {
+            const sec = document.getElementById('trend-alert-section');
+            sec.classList.remove('hidden');
+            const content = document.getElementById('trend-alert-content');
+            const ta = pa.trend_alert;
+            const dirColor = ta.direction === 'growing' ? 'text-emerald-400' : ta.direction === 'declining' ? 'text-red-400' : 'text-amber-400';
+            const rawTemporal = pa._raw_stats?.temporal || {};
+            content.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-gray-800/50 rounded-lg p-4">
+                        <p class="text-xs text-gray-400 uppercase font-semibold mb-2">Direcci&oacute;n</p>
+                        <p class="text-lg font-bold ${dirColor}">${(ta.direction || 'unknown').toUpperCase()}</p>
+                        ${rawTemporal.kendall_tau !== undefined ? `<p class="text-xs text-gray-500 mt-1">Kendall &tau; = ${rawTemporal.kendall_tau}, p = ${rawTemporal.kendall_p}</p>` : ''}
+                        <p class="text-sm text-gray-300 mt-2">${ta.last_month_vs_history || ''}</p>
+                    </div>
+                    <div class="bg-gray-800/50 rounded-lg p-4">
+                        <p class="text-xs text-gray-400 uppercase font-semibold mb-2">D&iacute;a de la semana</p>
+                        <p class="text-sm text-gray-300">${ta.day_significance || ''}</p>
+                        ${rawTemporal.kruskal_wallis_h !== undefined ? `<p class="text-xs text-gray-500 mt-1">Kruskal-Wallis H = ${rawTemporal.kruskal_wallis_h}, p = ${rawTemporal.kruskal_wallis_p}</p>` : ''}
+                    </div>
+                </div>
+                ${ta.repost_ratio_trend ? `<div class="bg-gray-800/40 rounded-lg p-3 mt-2">
+                    <p class="text-xs text-gray-400 uppercase font-semibold mb-1">Ratio de reposts</p>
+                    <p class="text-sm text-gray-300">${ta.repost_ratio_trend}</p>
+                </div>` : ''}
+            `;
+        }
+
+        const rawCorr = pa._raw_stats?.correlations;
+        if (rawCorr && rawCorr.length > 0) {
+            const corrSection = document.createElement('div');
+            corrSection.className = 'bg-gray-900 rounded-xl p-6 border border-gray-800';
+            corrSection.innerHTML = `
+                <h3 class="text-lg font-semibold text-indigo-400 mb-4">Correlaciones Spearman (p &lt; 0.05)</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead><tr class="text-gray-400 border-b border-gray-800">
+                            <th class="text-left py-2 pr-4">Variable</th>
+                            <th class="text-right py-2 pr-4">rho</th>
+                            <th class="text-right py-2 pr-4">p-value</th>
+                            <th class="text-left py-2">Direcci&oacute;n</th>
+                        </tr></thead>
+                        <tbody>${rawCorr.map(c => `
+                            <tr class="border-b border-gray-800/50">
+                                <td class="py-2 pr-4 font-medium text-gray-200">${c.feature}</td>
+                                <td class="py-2 pr-4 text-right ${c.rho > 0 ? 'text-emerald-400' : 'text-red-400'}">${c.rho}</td>
+                                <td class="py-2 pr-4 text-right text-gray-400">${c.p_value}</td>
+                                <td class="py-2 text-gray-300">${c.direction === 'positive' ? '&uarr; Positiva' : '&darr; Negativa'}</td>
+                            </tr>
+                        `).join('')}</tbody>
+                    </table>
+                </div>
+            `;
+            document.getElementById('pattern-section').insertBefore(corrSection, document.getElementById('pattern-section').querySelector('.bg-gray-900:last-of-type'));
+        }
+    }
+
+    // Legacy format
+    if (pa.content_formula) {
+        const formula = pa.content_formula;
+        document.getElementById('formula-section-legacy').classList.remove('hidden');
+        document.getElementById('formula-content').innerHTML = `
+            <div class="bg-emerald-900/20 rounded-lg p-4 border border-emerald-800/30">
+                <h4 class="text-sm font-semibold text-emerald-400 mb-2">Lo que funciona</h4>
+                <p class="text-sm text-gray-300">${formula.what_works || ''}</p>
+            </div>
+            <div class="bg-red-900/20 rounded-lg p-4 border border-red-800/30">
+                <h4 class="text-sm font-semibold text-red-400 mb-2">Lo que NO funciona</h4>
+                <p class="text-sm text-gray-300">${formula.what_fails || ''}</p>
+            </div>
+            <div class="bg-blue-900/20 rounded-lg p-4 border border-blue-800/30">
+                <h4 class="text-sm font-semibold text-blue-400 mb-2">Post &Oacute;ptimo</h4>
+                <p class="text-sm text-gray-300">${formula.optimal_post || ''}</p>
+            </div>
+        `;
+    }
+
+    if (pa.engagement_drivers && pa.engagement_drivers.length > 0) {
+        document.getElementById('drivers-section-legacy').classList.remove('hidden');
+        const driversList = document.getElementById('drivers-list');
+        driversList.innerHTML = '';
+        pa.engagement_drivers.forEach(d => {
+            const colors = {alto: 'text-emerald-400 bg-emerald-900/20 border-emerald-700/30', medio: 'text-yellow-400 bg-yellow-900/20 border-yellow-700/30', bajo: 'text-gray-400 bg-gray-800/50 border-gray-700/30'};
+            const c = colors[d.impact] || colors.medio;
+            const div = document.createElement('div');
+            div.className = `rounded-lg p-3 border ${c.split(' ').slice(1).join(' ')}`;
+            div.innerHTML = `
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="font-semibold text-sm ${c.split(' ')[0]}">${d.factor}</span>
+                    <span class="tag ${c} text-xs border">${d.impact}</span>
+                </div>
+                <p class="text-sm text-gray-300">${d.detail}</p>
+            `;
+            driversList.appendChild(div);
+        });
+    }
+
+    // Hidden patterns
+    const patList = document.getElementById('patterns-list');
+    patList.innerHTML = '';
+    (pa.hidden_patterns || []).forEach((p, i) => {
+        const div = document.createElement('div');
+        div.className = 'bg-gray-800/50 rounded-lg p-4 border-l-4 border-yellow-500/50';
+        div.innerHTML = `
+            <h4 class="font-semibold text-yellow-300 mb-1">${i+1}. ${p.title}</h4>
+            <p class="text-sm text-gray-300 mb-2">${p.description}</p>
+            <p class="text-xs text-gray-500 mb-2"><strong>Evidencia:</strong> ${p.evidence}</p>
+            <p class="text-sm text-emerald-400"><strong>Acci&oacute;n:</strong> ${p.action}</p>
+        `;
+        patList.appendChild(div);
+    });
+
+    // Recommendations
+    const recList = document.getElementById('recommendations-list');
+    recList.innerHTML = '';
+    (pa.strategic_recommendations || []).forEach(r => {
+        const div = document.createElement('div');
+        div.className = 'bg-purple-900/20 rounded-lg p-4 border border-purple-800/30';
+        div.innerHTML = `
+            <div class="flex items-center gap-2 mb-1">
+                <span class="bg-purple-600 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">${r.priority}</span>
+                <span class="font-semibold text-sm text-purple-300">${r.recommendation}</span>
+            </div>
+            <p class="text-sm text-gray-400 ml-8">${r.expected_impact}</p>
+        `;
+        recList.appendChild(div);
+    });
+
+    // Anomalies
+    if (pa.anomalies && pa.anomalies.length > 0) {
+        document.getElementById('anomalies-section').classList.remove('hidden');
+        const anomList = document.getElementById('anomalies-list');
+        anomList.innerHTML = '';
+        pa.anomalies.forEach(a => {
+            const div = document.createElement('div');
+            div.className = 'text-sm text-orange-300/80 bg-orange-900/10 rounded-lg p-3 border border-orange-800/20';
+            div.textContent = typeof a === 'string' ? a : (a.description || a.title || JSON.stringify(a));
+            anomList.appendChild(div);
+        });
+    }
+}
+
+// ── Drill-down ──
+let _allPosts = [];
+let _drilldownSortAsc = false;
+let _drilldownFiltered = [];
+
+function showDrilldown(title, posts) {
+    _drilldownFiltered = posts;
+    _drilldownSortAsc = false;
+    document.getElementById('drilldown-title').textContent = title;
+    document.getElementById('drilldown-imp-header').innerHTML = 'Impressions &#x25BC;';
+    renderDrilldownTable(posts);
+    document.getElementById('drilldown-modal').classList.remove('hidden');
+}
+
+function closeDrilldown() {
+    document.getElementById('drilldown-modal').classList.add('hidden');
+}
+
+function toggleDrilldownSort() {
+    _drilldownSortAsc = !_drilldownSortAsc;
+    _drilldownFiltered.sort((a, b) => _drilldownSortAsc ? a.impressions - b.impressions : b.impressions - a.impressions);
+    document.getElementById('drilldown-imp-header').innerHTML = _drilldownSortAsc ? 'Impressions &#x25B2;' : 'Impressions &#x25BC;';
+    renderDrilldownTable(_drilldownFiltered);
+}
+
+function renderDrilldownTable(posts) {
+    const tbody = document.getElementById('drilldown-body');
+    tbody.innerHTML = '';
+    posts.slice(0, 20).forEach((p, i) => {
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-gray-800/50 hover:bg-gray-800/30';
+        const textCell = p.url
+            ? `<a href="${p.url}" target="_blank" rel="noopener" class="text-blue-400 hover:text-blue-300 hover:underline">${p.text}</a>`
+            : p.text;
+        tr.innerHTML = `
+            <td class="py-2 pr-4 text-gray-400">${i + 1}</td>
+            <td class="py-2 pr-4 whitespace-nowrap">${p.date}</td>
+            <td class="py-2 pr-4"><span class="tag bg-blue-500/20 text-blue-400 border border-blue-500/30">${p.content_type}</span></td>
+            <td class="py-2 pr-4 text-gray-300">${textCell}</td>
+            <td class="py-2 pr-4 text-right">${p.reactions}</td>
+            <td class="py-2 pr-4 text-right">${p.comments}</td>
+            <td class="py-2 pr-4 text-right">${p.engagement}</td>
+            <td class="py-2 text-right font-medium text-emerald-400">${(p.impressions || 0).toLocaleString()}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrilldown(); });
+document.getElementById('drilldown-modal').addEventListener('click', e => { if (e.target === e.currentTarget) closeDrilldown(); });
+
+function addChartClickHandler(chart, filterFn, titleFn) {
+    chart.options.onClick = (evt, elements) => {
+        if (!elements.length || !_allPosts.length) return;
+        const idx = elements[0].index;
+        const label = chart.data.labels[idx];
+        const filtered = _allPosts.filter(p => filterFn(p, label, idx));
+        filtered.sort((a, b) => b.impressions - a.impressions);
+        showDrilldown(titleFn(label, filtered.length), filtered);
+    };
+    chart.update();
+}
+
+function setupDrilldownHandlers(m) {
+    _allPosts = m.all_posts || [];
+    if (charts.day) addChartClickHandler(charts.day,
+        (p, label) => p.day === label,
+        (label, n) => `Posts on ${label} (${n} posts) \u2014 Top 20 by Impressions`
+    );
+    if (charts.contentType) addChartClickHandler(charts.contentType,
+        (p, label) => p.content_type === label,
+        (label, n) => `Content type: ${label} (${n} posts) \u2014 Top 20 by Impressions`
+    );
+    if (charts.imageEng) addChartClickHandler(charts.imageEng,
+        (p, label) => label.startsWith('With') ? p.has_image : !p.has_image,
+        (label, n) => `${label} (${n} posts) \u2014 Top 20 by Impressions`
+    );
+    if (charts.categories) addChartClickHandler(charts.categories,
+        (p, label) => p.category === label,
+        (label, n) => `Category: ${label} (${n} posts) \u2014 Top 20 by Impressions`
+    );
+    if (charts.sentiment) addChartClickHandler(charts.sentiment,
+        (p, label) => p.sentiment === label,
+        (label, n) => `Sentiment: ${label} (${n} posts) \u2014 Top 20 by Impressions`
+    );
+    if (charts.length) addChartClickHandler(charts.length,
+        (p, label) => {
+            const l = p.text_length;
+            if (label === '0-100') return l < 100;
+            if (label === '100-300') return l >= 100 && l < 300;
+            if (label === '300-500') return l >= 300 && l < 500;
+            if (label === '500-1000') return l >= 500 && l < 1000;
+            if (label === '1000+') return l >= 1000;
+            return false;
+        },
+        (label, n) => `Length ${label} chars (${n} posts) \u2014 Top 20 by Impressions`
+    );
+}
+</script>
+</body>
+</html>
