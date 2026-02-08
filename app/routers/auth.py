@@ -37,6 +37,39 @@ class LoginRequest(BaseModel):
     email: EmailStr
 
 
+class CheckLinkedInRequest(BaseModel):
+    linkedin_public_id: str
+
+
+@router.post("/check-linkedin")
+async def check_linkedin(req: CheckLinkedInRequest, db: AsyncSession = Depends(get_db)):
+    """Check if a LinkedIn public_id already exists. If so, auto-login."""
+    if not req.linkedin_public_id:
+        return {"status": "new_user"}
+
+    result = await db.execute(
+        select(User).where(User.linkedin_public_id == req.linkedin_public_id)
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        return {"status": "new_user"}
+
+    user.last_login_at = datetime.utcnow()
+    jwt_token = create_jwt_token(user.id, user.email)
+
+    return {
+        "status": "existing_user",
+        "token": jwt_token,
+        "user": {
+            "id": str(user.id),
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+        },
+    }
+
+
 @router.post("/register")
 async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     """Register a new user. Returns JWT token."""
