@@ -37,6 +37,19 @@ async def init_db(max_retries: int = 5, retry_delay: float = 2.0):
         try:
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
+                # Add columns that may not exist yet (create_all doesn't alter)
+                for col, coltype in [
+                    ("encrypted_linkedin_cookies", "TEXT"),
+                    ("linkedin_cookies_updated_at", "TIMESTAMP"),
+                ]:
+                    try:
+                        await conn.execute(
+                            __import__("sqlalchemy").text(
+                                f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {coltype}"
+                            )
+                        )
+                    except Exception:
+                        pass  # Column already exists
             logger.info("Database tables initialized successfully.")
             return
         except Exception as e:

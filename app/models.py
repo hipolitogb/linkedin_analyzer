@@ -32,6 +32,8 @@ class User(Base):
     phone = Column(String(50), nullable=True)
     linkedin_public_id = Column(String(200), nullable=True)
     linkedin_profile_url = Column(String(500), nullable=True)
+    encrypted_linkedin_cookies = Column(Text, nullable=True)
+    linkedin_cookies_updated_at = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

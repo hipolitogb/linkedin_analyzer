@@ -3,6 +3,7 @@
 import logging
 from datetime import datetime
 
+import httpx
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
@@ -15,6 +16,7 @@ from app.auth import (
     get_current_user,
     verify_magic_link_token,
 )
+from app.crypto_utils import decrypt_cookies
 from app.database import get_db
 from app.email_service import send_magic_link
 from app.models import User
@@ -171,6 +173,75 @@ async def me(user: User = Depends(get_current_user)):
             "linkedin_profile_url": user.linkedin_profile_url or "",
         },
     }
+
+
+class SaveCookiesRequest(BaseModel):
+    encrypted_cookies: str
+
+
+@router.post("/save-linkedin-cookies")
+async def save_linkedin_cookies(
+    req: SaveCookiesRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save encrypted LinkedIn cookies to the user record for reuse."""
+    user.encrypted_linkedin_cookies = req.encrypted_cookies
+    user.linkedin_cookies_updated_at = datetime.utcnow()
+    return {"status": "ok"}
+
+
+@router.get("/check-stored-cookies")
+async def check_stored_cookies(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Check if the user has stored LinkedIn cookies and if they're still valid."""
+    if not user.encrypted_linkedin_cookies:
+        return {"status": "no_cookies"}
+
+    try:
+        cookies = decrypt_cookies(user.encrypted_linkedin_cookies)
+    except Exception:
+        user.encrypted_linkedin_cookies = None
+        return {"status": "no_cookies"}
+
+    li_at = cookies.get("li_at", "")
+    jsessionid = cookies.get("jsessionid", "")
+    if not li_at:
+        user.encrypted_linkedin_cookies = None
+        return {"status": "no_cookies"}
+
+    # Validate against LinkedIn API
+    csrf_value = jsessionid.strip('"') if jsessionid else "ajax:0"
+    headers = {
+        "user-agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "csrf-token": csrf_value,
+        "x-restli-protocol-version": "2.0.0",
+    }
+    cookies_dict = {"li_at": li_at, "JSESSIONID": jsessionid or '"ajax:0"'}
+
+    try:
+        async with httpx.AsyncClient(
+            cookies=cookies_dict, headers=headers, follow_redirects=False, timeout=10.0
+        ) as client:
+            resp = await client.get("https://www.linkedin.com/voyager/api/me")
+            if resp.status_code == 200:
+                return {
+                    "status": "valid",
+                    "encrypted_cookies": user.encrypted_linkedin_cookies,
+                }
+    except Exception:
+        pass
+
+    # Cookies expired or invalid
+    user.encrypted_linkedin_cookies = None
+    user.linkedin_cookies_updated_at = None
+    return {"status": "expired"}
 
 
 @router.post("/logout")

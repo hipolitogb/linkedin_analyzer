@@ -75,7 +75,9 @@
 <nav class="border-b border-white/5 bg-surface-950/80 backdrop-blur-md sticky top-0 z-50">
     <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
         <a href="/" class="text-lg font-bold tracking-tight text-white">LinkedIn<span class="text-brand-500">Analyzer</span></a>
-        <a href="/login" class="text-sm text-gray-400 hover:text-white transition">Iniciar sesion</a>
+        <div id="nav-auth" class="flex items-center gap-3">
+            <a href="/login" class="text-sm text-gray-400 hover:text-white transition">Iniciar sesion</a>
+        </div>
     </div>
 </nav>
 
@@ -318,6 +320,17 @@ function getAuthHeaders() {
     return headers;
 }
 
+async function saveLinkedInCookies() {
+    if (!authToken || !encryptedCookies) return;
+    try {
+        await fetch('/api/auth/save-linkedin-cookies', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ encrypted_cookies: encryptedCookies }),
+        });
+    } catch (e) { /* non-critical */ }
+}
+
 // ── Step management ──────────────────────────────────────────────
 function setStep(step) {
     for (let i = 1; i <= 5; i++) {
@@ -429,6 +442,7 @@ async function initBrowser() {
                         // Auto-login: set token and skip to payment step
                         authToken = data.token;
                         document.cookie = `session_token=${authToken}; path=/; max-age=${7*24*3600}; samesite=lax`;
+                        saveLinkedInCookies();
                         setTimeout(() => setStep(3), 800);
                         return;
                     }
@@ -515,6 +529,7 @@ async function submitRegistration() {
         if (data.status === 'ok') {
             authToken = data.token;
             document.cookie = `session_token=${authToken}; path=/; max-age=${7*24*3600}; samesite=lax`;
+            saveLinkedInCookies();
             setStep(3);
         } else if (data.status === 'existing_user') {
             errorEl.textContent = data.message + ' Podes ir a iniciar sesion.';
@@ -695,9 +710,44 @@ async function pollScrapeStatus(scrapeSessionId) {
     setTimeout(poll, 2000);
 }
 
+// ── Session check ────────────────────────────────────────────────
+async function checkExistingSession() {
+    try {
+        const res = await fetch('/api/auth/me');
+        const data = await res.json();
+        if (data.status !== 'ok') return false;
+
+        const name = `${data.user.first_name} ${data.user.last_name}`;
+        document.getElementById('nav-auth').innerHTML = `
+            <a href="/dashboard" class="text-sm text-gray-400 hover:text-white transition">Dashboard</a>
+            <span class="text-sm text-gray-300">${name}</span>
+            <button onclick="document.cookie='session_token=; path=/; max-age=0'; location.href='/login';"
+                class="text-sm text-gray-500 hover:text-red-400 transition">Cerrar sesion</button>
+        `;
+        authToken = document.cookie.split('session_token=')[1]?.split(';')[0] || '';
+
+        // Check if we have valid stored LinkedIn cookies
+        const cookieRes = await fetch('/api/auth/check-stored-cookies', { headers: getAuthHeaders() });
+        const cookieData = await cookieRes.json();
+
+        if (cookieData.status === 'valid') {
+            encryptedCookies = cookieData.encrypted_cookies;
+            return true; // Skip browser
+        }
+        return false;
+    } catch (e) {
+        return false;
+    }
+}
+
 // ── Boot ─────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-    initBrowser();
+document.addEventListener('DOMContentLoaded', async () => {
+    const canSkipBrowser = await checkExistingSession();
+    if (canSkipBrowser) {
+        setStep(3); // Skip LinkedIn login + registration, go to payment
+    } else {
+        initBrowser();
+    }
 });
 </script>
 </body>
