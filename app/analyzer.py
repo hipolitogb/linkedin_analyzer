@@ -88,13 +88,18 @@ def _extract_text_features(post: dict) -> dict:
 
 
 def _compute_deep_stats(posts: list[dict]) -> dict:
-    """Core statistical engine. All computations in Python, returns structured dict."""
+    """Core statistical engine. Computes everything GPT needs to generate findings.
+
+    Designed to enable "contrarian analysis" — showing where naive dashboard metrics
+    are misleading due to outliers, repost contamination, or small sample sizes.
+    """
     result: dict = {}
 
     # ── Engagement array ──
     engagements = np.array([p.get("engagement", 0) for p in posts], dtype=float)
 
     # ── C1: Outlier detection (IQR method) ──
+    outlier_mask = np.zeros(len(engagements), dtype=bool)
     if len(engagements) >= 4:
         q1_val, q3_val = float(np.percentile(engagements, 25)), float(np.percentile(engagements, 75))
         iqr = q3_val - q1_val
@@ -103,9 +108,11 @@ def _compute_deep_stats(posts: list[dict]) -> dict:
         outlier_indices = [int(i) for i in np.where(outlier_mask)[0]]
         outlier_posts = [
             {
-                "date": posts[i]["date"].strftime("%Y-%m-%d") if hasattr(posts[i].get("date"), "strftime") else str(posts[i].get("date", "")),
+                "date": posts[i]["date"].strftime("%Y-%m-%d %a %H:%M") if hasattr(posts[i].get("date"), "strftime") else str(posts[i].get("date", "")),
                 "engagement": int(engagements[i]),
-                "text": (posts[i].get("text", "") or "")[:120],
+                "content_type": posts[i].get("content_type", "text"),
+                "is_repost": posts[i].get("is_repost", False),
+                "text": (posts[i].get("text", "") or "")[:150],
             }
             for i in outlier_indices
         ]
@@ -136,11 +143,60 @@ def _compute_deep_stats(posts: list[dict]) -> dict:
     # ── C2: Segment split (reposts vs originals) ──
     originals = [p for p in posts if not p.get("is_repost", False)]
     reposts = [p for p in posts if p.get("is_repost", False)]
+
+    # Repost subcategories: with own comment vs plain reshare
+    reposts_with_comment = [p for p in reposts if (p.get("reshare_comment") or "").strip()]
+    reposts_plain = [p for p in reposts if not (p.get("reshare_comment") or "").strip()]
+
+    def _seg_stats(post_list):
+        if not post_list:
+            return {"n": 0, "mean": 0, "median": 0}
+        engs = [p.get("engagement", 0) for p in post_list]
+        return {
+            "n": len(post_list),
+            "mean": round(float(np.mean(engs)), 1),
+            "median": round(float(np.median(engs)), 1),
+        }
+
+    # Mann-Whitney: originals vs reposts
+    repost_significance = None
+    if len(originals) >= 3 and len(reposts) >= 3:
+        orig_engs = [p.get("engagement", 0) for p in originals]
+        rep_engs = [p.get("engagement", 0) for p in reposts]
+        try:
+            stat, pval = sp_stats.mannwhitneyu(orig_engs, rep_engs, alternative="two-sided")
+            repost_significance = {"u_stat": round(float(stat), 1), "p_value": round(float(pval), 4)}
+        except Exception:
+            pass
+
+    # Repost stats without outliers
+    originals_no_outlier = [p for i, p in enumerate(posts)
+                           if not p.get("is_repost", False) and not outlier_mask[i]]
+    reposts_no_outlier = [p for i, p in enumerate(posts)
+                         if p.get("is_repost", False) and not outlier_mask[i]]
+    repost_sig_clean = None
+    if len(originals_no_outlier) >= 3 and len(reposts_no_outlier) >= 3:
+        try:
+            stat, pval = sp_stats.mannwhitneyu(
+                [p.get("engagement", 0) for p in originals_no_outlier],
+                [p.get("engagement", 0) for p in reposts_no_outlier],
+                alternative="two-sided",
+            )
+            repost_sig_clean = {"u_stat": round(float(stat), 1), "p_value": round(float(pval), 4)}
+        except Exception:
+            pass
+
     result["segment"] = {
         "total": len(posts),
-        "originals": len(originals),
-        "reposts": len(reposts),
+        "originals": _seg_stats(originals),
+        "reposts": _seg_stats(reposts),
+        "reposts_with_comment": _seg_stats(reposts_with_comment),
+        "reposts_plain": _seg_stats(reposts_plain),
         "repost_ratio": round(len(reposts) / len(posts), 3) if posts else 0,
+        "repost_vs_original_significance": repost_significance,
+        "repost_vs_original_clean": repost_sig_clean,
+        "originals_no_outlier": _seg_stats(originals_no_outlier),
+        "reposts_no_outlier": _seg_stats(reposts_no_outlier),
     }
 
     # Monthly repost ratio
@@ -157,27 +213,38 @@ def _compute_deep_stats(posts: list[dict]) -> dict:
         for m, d in sorted(monthly_repost.items())
     }
 
-    # All subsequent analysis on ORIGINALS ONLY
+    # All subsequent analysis on ORIGINALS ONLY (cleaner signal)
     analysis_posts = originals if originals else posts
 
-    # ── C3: Per-format comparison (originals only) ──
-    format_groups: dict[str, list[float]] = {}
-    for p in analysis_posts:
-        ct = p.get("content_type", "text")
-        format_groups.setdefault(ct, []).append(p.get("engagement", 0))
+    # ── C3: Per-format comparison (originals only, WITH and WITHOUT outliers) ──
+    def _format_breakdown(post_list):
+        groups: dict[str, list[float]] = {}
+        for p in post_list:
+            ct = p.get("content_type", "text")
+            groups.setdefault(ct, []).append(p.get("engagement", 0))
+        stats = {}
+        for ct, engs in groups.items():
+            arr = np.array(engs, dtype=float)
+            stats[ct] = {
+                "n": len(engs),
+                "median": round(float(np.median(arr)), 1),
+                "p25": round(float(np.percentile(arr, 25)), 1),
+                "p75": round(float(np.percentile(arr, 75)), 1),
+                "mean": round(float(np.mean(arr)), 1),
+            }
+        return stats, groups
 
-    format_stats = {}
-    for ct, engs in format_groups.items():
-        arr = np.array(engs, dtype=float)
-        format_stats[ct] = {
-            "n": len(engs),
-            "median": round(float(np.median(arr)), 1),
-            "p25": round(float(np.percentile(arr, 25)), 1),
-            "p75": round(float(np.percentile(arr, 75)), 1),
-            "mean": round(float(np.mean(arr)), 1),
-        }
+    format_stats, format_groups = _format_breakdown(analysis_posts)
 
-    # Mann-Whitney U between format pairs
+    # Also compute format stats for ALL posts (including reposts) to show contamination
+    format_stats_all, _ = _format_breakdown(posts)
+
+    # Format stats WITHOUT outliers (originals only)
+    analysis_no_outlier = [p for i, p in enumerate(posts)
+                          if not p.get("is_repost", False) and not outlier_mask[i]]
+    format_stats_clean, _ = _format_breakdown(analysis_no_outlier)
+
+    # Mann-Whitney U between format pairs (originals only)
     format_comparisons = []
     format_names = list(format_groups.keys())
     for i in range(len(format_names)):
@@ -187,25 +254,26 @@ def _compute_deep_stats(posts: list[dict]) -> dict:
             if len(a_vals) >= 3 and len(b_vals) >= 3:
                 try:
                     stat, pval = sp_stats.mannwhitneyu(a_vals, b_vals, alternative="two-sided")
-                    if pval < 0.05:
-                        format_comparisons.append({
-                            "a": a_name, "b": b_name,
-                            "u_stat": round(float(stat), 1),
-                            "p_value": round(float(pval), 4),
-                            "higher": a_name if np.median(a_vals) > np.median(b_vals) else b_name,
-                        })
+                    format_comparisons.append({
+                        "a": a_name, "b": b_name,
+                        "u_stat": round(float(stat), 1),
+                        "p_value": round(float(pval), 4),
+                        "significant": pval < 0.05,
+                        "higher": a_name if np.median(a_vals) > np.median(b_vals) else b_name,
+                    })
                 except Exception:
                     pass
 
     result["format_stats"] = format_stats
+    result["format_stats_all"] = format_stats_all
+    result["format_stats_clean"] = format_stats_clean
     result["format_comparisons"] = format_comparisons
 
-    # ── C4: Spearman correlations ──
+    # ── C4: Spearman correlations (originals only) ──
     correlations = []
     eng_array = np.array([p.get("engagement", 0) for p in analysis_posts], dtype=float)
 
     if len(analysis_posts) >= 5:
-        # Text features
         features_list = [_extract_text_features(p) for p in analysis_posts]
         numeric_features = {
             "text_length": [f["text_length"] for f in features_list],
@@ -216,30 +284,28 @@ def _compute_deep_stats(posts: list[dict]) -> dict:
             "has_link": [int(f["has_link"]) for f in features_list],
             "has_emoji": [int(f["has_emoji"]) for f in features_list],
             "has_cta": [int(f["has_cta"]) for f in features_list],
+            "hour_posted": [
+                p["date"].hour if hasattr(p.get("date"), "hour") else 0
+                for p in analysis_posts
+            ],
+            "day_of_week": [
+                p["date"].weekday() if hasattr(p.get("date"), "weekday") else 0
+                for p in analysis_posts
+            ],
         }
-
-        # Add hour_posted and day_of_week
-        numeric_features["hour_posted"] = [
-            p["date"].hour if hasattr(p.get("date"), "hour") else 0
-            for p in analysis_posts
-        ]
-        numeric_features["day_of_week"] = [
-            p["date"].weekday() if hasattr(p.get("date"), "weekday") else 0
-            for p in analysis_posts
-        ]
 
         for feat_name, feat_vals in numeric_features.items():
             feat_array = np.array(feat_vals, dtype=float)
-            # Skip if no variance
             if np.std(feat_array) == 0:
                 continue
             try:
                 rho, pval = sp_stats.spearmanr(feat_array, eng_array)
-                if pval < 0.05 and not np.isnan(rho):
+                if not np.isnan(rho):
                     correlations.append({
                         "feature": feat_name,
                         "rho": round(float(rho), 3),
                         "p_value": round(float(pval), 4),
+                        "significant": pval < 0.05,
                         "direction": "positive" if rho > 0 else "negative",
                     })
             except Exception:
@@ -247,7 +313,70 @@ def _compute_deep_stats(posts: list[dict]) -> dict:
 
     result["correlations"] = sorted(correlations, key=lambda x: abs(x["rho"]), reverse=True)
 
-    # ── C5: Keyword analysis (top vs bottom quartile) ──
+    # ── C5: Text length buckets (finer grained, with/without outlier) ──
+    length_buckets_def = [
+        ("0-100", 0, 100), ("100-300", 100, 300), ("300-500", 300, 500),
+        ("500-800", 500, 800), ("800-1K", 800, 1000), ("1K-1.5K", 1000, 1500),
+        ("1.5K-3K", 1500, 3000), ("3K+", 3000, 999999),
+    ]
+
+    def _bucket_stats(post_list):
+        buckets = {}
+        for label, lo, hi in length_buckets_def:
+            bucket_posts = [p for p in post_list
+                          if lo <= len(p.get("text", "") or "") < hi]
+            if bucket_posts:
+                engs = [p.get("engagement", 0) for p in bucket_posts]
+                buckets[label] = {
+                    "n": len(bucket_posts),
+                    "mean": round(float(np.mean(engs)), 1),
+                    "median": round(float(np.median(engs)), 1),
+                }
+        return buckets
+
+    result["length_buckets_originals"] = _bucket_stats(analysis_posts)
+    result["length_buckets_clean"] = _bucket_stats(analysis_no_outlier)
+
+    # ── C5b: Link penalty analysis ──
+    with_links = [p for p in analysis_posts if _has_text_link(p.get("text", "") or "")]
+    without_links = [p for p in analysis_posts if not _has_text_link(p.get("text", "") or "")]
+    result["link_analysis"] = {
+        "with_links": _seg_stats(with_links),
+        "without_links": _seg_stats(without_links),
+    }
+    if len(with_links) >= 3 and len(without_links) >= 3:
+        try:
+            stat, pval = sp_stats.mannwhitneyu(
+                [p.get("engagement", 0) for p in with_links],
+                [p.get("engagement", 0) for p in without_links],
+                alternative="two-sided",
+            )
+            result["link_analysis"]["significance"] = {"u_stat": round(float(stat), 1), "p_value": round(float(pval), 4)}
+        except Exception:
+            pass
+
+    # ── C5c: Mention buckets ──
+    def _mention_count(p):
+        return (p.get("text", "") or "").count("@")
+
+    mention_buckets = {"0": [], "1-2": [], "3-4": [], "5+": []}
+    for p in analysis_posts:
+        mc = _mention_count(p)
+        if mc == 0:
+            mention_buckets["0"].append(p.get("engagement", 0))
+        elif mc <= 2:
+            mention_buckets["1-2"].append(p.get("engagement", 0))
+        elif mc <= 4:
+            mention_buckets["3-4"].append(p.get("engagement", 0))
+        else:
+            mention_buckets["5+"].append(p.get("engagement", 0))
+
+    result["mention_buckets"] = {
+        k: {"n": len(v), "median": round(float(np.median(v)), 1) if v else 0, "mean": round(float(np.mean(v)), 1) if v else 0}
+        for k, v in mention_buckets.items() if v
+    }
+
+    # ── C6: Keyword analysis (top vs bottom quartile) ──
     keyword_analysis: dict = {}
     if len(analysis_posts) >= 8:
         sorted_by_eng = sorted(analysis_posts, key=lambda x: x.get("engagement", 0))
@@ -268,25 +397,22 @@ def _compute_deep_stats(posts: list[dict]) -> dict:
         top_words = _tokenize(top_q)
         bottom_words = _tokenize(bottom_q)
 
-        # Normalize by number of posts in each quartile
         top_norm = {w: c / len(top_q) for w, c in top_words.items() if c >= 2}
         bottom_norm = {w: c / len(bottom_q) for w, c in bottom_words.items() if c >= 2}
 
-        # Words >= 3x more frequent in top quartile
         top_dominant = []
         for w, freq in top_norm.items():
             bottom_freq = bottom_norm.get(w, 0.01)
             ratio = freq / bottom_freq
-            if ratio >= 3:
+            if ratio >= 2:
                 top_dominant.append({"word": w, "top_freq": round(freq, 2), "bottom_freq": round(bottom_freq, 2), "ratio": round(ratio, 1)})
         top_dominant.sort(key=lambda x: x["ratio"], reverse=True)
 
-        # Words >= 3x more frequent in bottom quartile
         bottom_dominant = []
         for w, freq in bottom_norm.items():
             top_freq = top_norm.get(w, 0.01)
             ratio = freq / top_freq
-            if ratio >= 3:
+            if ratio >= 2:
                 bottom_dominant.append({"word": w, "bottom_freq": round(freq, 2), "top_freq": round(top_freq, 2), "ratio": round(ratio, 1)})
         bottom_dominant.sort(key=lambda x: x["ratio"], reverse=True)
 
@@ -299,48 +425,59 @@ def _compute_deep_stats(posts: list[dict]) -> dict:
 
     result["keyword_analysis"] = keyword_analysis
 
-    # ── C6: Temporal trend ──
+    # ── C7: Temporal trend ──
     temporal: dict = {}
-    monthly_medians: dict[str, float] = {}
+
+    # Monthly stats (median + mean + post count)
+    monthly_data: dict[str, list] = {}
     for p in analysis_posts:
         if hasattr(p.get("date"), "strftime"):
             mk = p["date"].strftime("%Y-%m")
-            monthly_medians.setdefault(mk, []).append(p.get("engagement", 0))
+            monthly_data.setdefault(mk, []).append(p.get("engagement", 0))
 
-    monthly_medians_sorted = {
-        k: round(float(np.median(v)), 1)
-        for k, v in sorted(monthly_medians.items())
+    monthly_stats = {}
+    for k in sorted(monthly_data.keys()):
+        v = monthly_data[k]
+        monthly_stats[k] = {
+            "n": len(v),
+            "median": round(float(np.median(v)), 1),
+            "mean": round(float(np.mean(v)), 1),
+        }
+    temporal["monthly_stats"] = monthly_stats
+
+    # Also compute monthly stats for impressions
+    monthly_imp: dict[str, list] = {}
+    for p in analysis_posts:
+        if hasattr(p.get("date"), "strftime") and p.get("impressions", 0) > 0:
+            mk = p["date"].strftime("%Y-%m")
+            monthly_imp.setdefault(mk, []).append(p.get("impressions", 0))
+    temporal["monthly_impressions"] = {
+        k: {"n": len(v), "mean": round(float(np.mean(v)), 1)}
+        for k, v in sorted(monthly_imp.items())
     }
 
-    if len(monthly_medians_sorted) >= 3:
-        months_list = list(monthly_medians_sorted.keys())
-        medians_list = list(monthly_medians_sorted.values())
+    medians_list = [monthly_stats[k]["median"] for k in sorted(monthly_stats.keys())]
+    months_list = sorted(monthly_stats.keys())
+
+    if len(medians_list) >= 3:
         try:
             tau, pval = sp_stats.kendalltau(range(len(medians_list)), medians_list)
             temporal["kendall_tau"] = round(float(tau), 3)
             temporal["kendall_p"] = round(float(pval), 4)
-            if pval < 0.05:
-                temporal["direction"] = "growing" if tau > 0 else "declining"
-            else:
-                temporal["direction"] = "stable"
+            temporal["direction"] = "growing" if tau > 0 and pval < 0.05 else "declining" if tau < 0 and pval < 0.05 else "stable"
         except Exception:
             temporal["direction"] = "unknown"
 
-        # Last month vs historical median
+        # Last month vs historical
         last_month_val = medians_list[-1]
         historical_vals = medians_list[:-1]
         if historical_vals:
             hist_median = float(np.median(historical_vals))
-            if hist_median > 0:
-                pct_change = round((last_month_val - hist_median) / hist_median * 100, 1)
-            else:
-                pct_change = 0.0
+            pct_change = round((last_month_val - hist_median) / hist_median * 100, 1) if hist_median > 0 else 0.0
             temporal["last_month"] = months_list[-1]
             temporal["last_month_median"] = last_month_val
             temporal["historical_median"] = round(hist_median, 1)
             temporal["pct_change"] = pct_change
-
-    temporal["monthly_medians"] = monthly_medians_sorted
 
     # Kruskal-Wallis across weekdays
     weekday_groups: dict[int, list[float]] = {}
@@ -364,7 +501,6 @@ def _compute_deep_stats(posts: list[dict]) -> dict:
     else:
         temporal["day_significant"] = False
 
-    # Per-weekday median engagement
     day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     temporal["weekday_medians"] = {
         day_names[wd]: round(float(np.median(vals)), 1)
@@ -372,9 +508,25 @@ def _compute_deep_stats(posts: list[dict]) -> dict:
         if vals
     }
 
+    # Hour analysis WITH vs WITHOUT outliers
+    hour_groups: dict[int, list[float]] = {}
+    hour_groups_clean: dict[int, list[float]] = {}
+    for i, p in enumerate(posts):
+        if hasattr(p.get("date"), "hour"):
+            h = p["date"].hour
+            hour_groups.setdefault(h, []).append(p.get("engagement", 0))
+            if not outlier_mask[i]:
+                hour_groups_clean.setdefault(h, []).append(p.get("engagement", 0))
+    temporal["hour_avg_with_outliers"] = {
+        h: round(float(np.mean(v)), 1) for h, v in sorted(hour_groups.items()) if v
+    }
+    temporal["hour_avg_without_outliers"] = {
+        h: round(float(np.mean(v)), 1) for h, v in sorted(hour_groups_clean.items()) if v
+    }
+
     result["temporal"] = temporal
 
-    # ── C7: Impression efficiency ──
+    # ── C8: Impression efficiency ──
     impression_analysis: dict = {}
     posts_with_imp = [p for p in analysis_posts if p.get("impressions", 0) > 0]
     if posts_with_imp:
@@ -393,7 +545,8 @@ def _compute_deep_stats(posts: list[dict]) -> dict:
                 "engagement": eng,
                 "impressions": imp,
                 "rate": round(rate, 2),
-                "text": (p.get("text", "") or "")[:100],
+                "content_type": p.get("content_type", "text"),
+                "text": (p.get("text", "") or "")[:120],
             }
 
             if imp > 2000 and rate < 1.5:
@@ -406,11 +559,32 @@ def _compute_deep_stats(posts: list[dict]) -> dict:
             "total_with_impressions": len(posts_with_imp),
             "median_rate": round(float(np.median(rates_arr)), 2),
             "mean_rate": round(float(np.mean(rates_arr)), 2),
-            "high_reach_low_engagement": high_reach_low_eng[:5],
-            "low_reach_high_engagement": low_reach_high_eng[:5],
+            "high_reach_low_engagement": sorted(high_reach_low_eng, key=lambda x: x["impressions"], reverse=True)[:5],
+            "low_reach_high_engagement": sorted(low_reach_high_eng, key=lambda x: x["rate"], reverse=True)[:5],
         }
 
     result["impression_efficiency"] = impression_analysis
+
+    # ── C9: Comment/reaction ratio by format ──
+    comment_ratio_by_type: dict = {}
+    for p in analysis_posts:
+        ct = p.get("content_type", "text")
+        reactions = p.get("reactions", 0)
+        comments = p.get("comments", 0)
+        comment_ratio_by_type.setdefault(ct, {"reactions": 0, "comments": 0})
+        comment_ratio_by_type[ct]["reactions"] += reactions
+        comment_ratio_by_type[ct]["comments"] += comments
+    result["comment_ratio_by_type"] = {
+        ct: round(d["comments"] / d["reactions"], 3) if d["reactions"] > 0 else 0
+        for ct, d in comment_ratio_by_type.items()
+    }
+
+    # ── C10: P90 threshold for "top 10%" ──
+    if len(analysis_posts) >= 10:
+        orig_engs = np.array([p.get("engagement", 0) for p in analysis_posts], dtype=float)
+        result["top_10_threshold"] = round(float(np.percentile(orig_engs, 90)), 1)
+    else:
+        result["top_10_threshold"] = 0
 
     return result
 
@@ -438,26 +612,47 @@ Return ONLY valid JSON, no markdown formatting."""
 
 # --- Deep pattern analysis (expensive, gpt-4o, one call with all data) ---
 
-PATTERN_ANALYSIS_PROMPT = """Sos un analista experto de contenido en LinkedIn. Abajo tenés TODAS las estadísticas pre-computadas con tests estadísticos reales (Spearman, Mann-Whitney, Kruskal-Wallis, Kendall tau). Tu trabajo es INTERPRETAR estos resultados, no calcular nada. Citá siempre los p-values y coeficientes. Reportá medianas (no promedios) salvo que aclares ambos. Si avg >> mediana, señalalo como sesgo por outliers.
+PATTERN_ANALYSIS_PROMPT = """Sos un analista experto de LinkedIn. Tu trabajo es encontrar HALLAZGOS que contradigan las conclusiones ingenuas del dashboard. El dashboard calcula promedios simples contaminados por outliers, mezcla reposts con originales, y no hace tests estadísticos. Vos tenés las estadísticas reales.
+
+TU ROL: Actuar como un "fact-checker" del dashboard. Cada hallazgo debe mostrar qué dice el dashboard (métricas ingenuas) vs qué dice la realidad (datos limpios con tests).
+
+REGLAS:
+1. SIEMPRE usá medianas (no promedios) salvo para mostrar cómo los promedios mienten
+2. Si avg >> mediana, señalalo explícitamente como sesgo por outlier
+3. Citá p-values, rho, n de muestra en cada afirmación
+4. Si una diferencia NO es significativa (p > 0.05), decilo — es tan valioso como una que sí lo es
+5. Escribí en español argentino (vos, usá, poné, etc.)
+6. Sé provocativo y directo. No des consejos genéricos de LinkedIn.
 
 DATOS DEL PERFIL:
 - Total posts: {total_posts}
 - Período: {date_range}
-- Originales: {originals} | Reposts: {reposts} (ratio: {repost_ratio})
+- Segmentación: {segment_stats}
 
 DETECCIÓN DE OUTLIERS (IQR * 3):
 {outlier_stats}
 
-ESTADÍSTICAS POR FORMATO (solo originales):
-{format_stats}
+FORMATO — Dashboard (todos los posts) vs Realidad (solo originales) vs Limpio (sin outliers):
+Dashboard: {format_stats_all}
+Originales: {format_stats}
+Limpios: {format_stats_clean}
 
-COMPARACIONES MANN-WHITNEY ENTRE FORMATOS (p < 0.05):
+MANN-WHITNEY ENTRE FORMATOS:
 {format_comparisons}
 
-CORRELACIONES SPEARMAN (p < 0.05):
+CORRELACIONES SPEARMAN (todas, incluso no significativas):
 {correlations}
 
-ANÁLISIS DE KEYWORDS (cuartil superior vs inferior):
+BUCKETS DE LARGO DE TEXTO (originales sin outlier):
+{length_buckets}
+
+ANÁLISIS DE LINKS:
+{link_analysis}
+
+MENCIONES POR BUCKET:
+{mention_buckets}
+
+KEYWORDS (cuartil superior vs inferior):
 {keyword_analysis}
 
 TENDENCIA TEMPORAL:
@@ -466,61 +661,72 @@ TENDENCIA TEMPORAL:
 EFICIENCIA DE IMPRESIONES:
 {impression_stats}
 
+RATIO COMENTARIOS/REACCIONES POR TIPO:
+{comment_ratios}
+
+UMBRAL TOP 10% (P90 originales): {top_10_threshold}
+
 TOP 10 POSTS:
 {top_posts}
 
 BOTTOM 10 POSTS:
 {bottom_posts}
 
-Devolvé un JSON con esta estructura exacta:
+Devolvé un JSON con esta estructura:
 {{
-  "executive_summary": "5 bullet points máximo con números específicos. Usá medianas. Si avg >> mediana, mencionalo.",
-  "data_cleaning": {{
-    "outliers_found": "Describí los outliers encontrados con datos específicos de los posts flaggeados",
-    "naive_vs_clean": "Qué conclusiones del dashboard cambian al sacar outliers (comparar with vs without stats)"
-  }},
-  "what_works": {{
-    "format": "Interpretá la comparación de formatos. Citá medianas y p-values de Mann-Whitney",
-    "length": "Interpretá la correlación longitud-engagement (rho y p-value)",
-    "mentions": "Interpretá el efecto de menciones @ (rho y p-value)",
-    "keywords": "Interpretá las palabras del cuartil superior. Qué temas/estilos dominan",
-    "other_factors": "Cualquier otra correlación significativa (emojis, CTAs, hashtags, párrafos)"
-  }},
-  "what_fails": {{
-    "penalties": "Interpretá correlaciones negativas. Qué factores bajan el engagement",
-    "low_performer_patterns": "Interpretá palabras/patrones del cuartil inferior"
-  }},
+  "findings": [
+    {{
+      "id": "identificador_unico",
+      "title": "Título provocativo que resuma el hallazgo (con datos clave)",
+      "severity": "critical|warning|insight",
+      "summary": "1-2 oraciones con el hallazgo principal y el número más impactante",
+      "details": [
+        "Detalle 1 con números específicos y comparación dashboard vs realidad",
+        "Detalle 2 con evidencia estadística (rho, p-value, medianas)",
+        "Detalle 3 con contexto o implicancias",
+        "Detalle 4 si aplica"
+      ],
+      "action": "Acción concreta y específica basada en este hallazgo"
+    }}
+  ],
+  "key_metrics": [
+    {{
+      "label": "Nombre corto de la métrica",
+      "value": "Valor real (mediana, limpio)",
+      "subtext": "Por qué el dashboard dice otra cosa"
+    }}
+  ],
+  "dashboard_vs_reality": [
+    {{
+      "dashboard_says": "Lo que el dashboard muestra (con número)",
+      "reality": "Lo que los datos limpios dicen (con número)"
+    }}
+  ],
   "optimal_formula": {{
-    "description": "Describí el post ideal basado en TODA la evidencia estadística. Largo, formato, día, hora, estilo",
-    "matching_posts": "Cuántos posts existentes se acercan a esta fórmula (estimá con los datos)"
+    "format": "Formato óptimo con evidencia",
+    "length": "Rango de caracteres óptimo con evidencia",
+    "mentions": "Cantidad de menciones con evidencia",
+    "links": "Estrategia de links con evidencia",
+    "content_style": "Estilo/tono con evidencia de keywords",
+    "hashtags": "Estrategia de hashtags con evidencia",
+    "when": "Día/hora con evidencia (o si NO importa, decirlo)",
+    "repost_limit": "Ratio máximo recomendado de reposts"
   }},
-  "trend_alert": {{
-    "direction": "growing/stable/declining — citá Kendall tau y p-value",
-    "last_month_vs_history": "% de cambio del último mes vs mediana histórica",
-    "day_significance": "Interpretá Kruskal-Wallis: ¿importa el día? Cuál es mejor/peor y por cuánto",
-    "repost_ratio_trend": "Cómo evoluciona el ratio de reposts mes a mes"
-  }},
-  "hidden_patterns": [
+  "top_3_actions": [
     {{
-      "title": "Título del patrón",
-      "description": "Descripción con datos específicos",
-      "evidence": "Estadísticos que lo respaldan (rho, p-value, medianas)",
-      "action": "Acción concreta"
+      "action": "Acción específica y accionable",
+      "expected_impact": "Impacto esperado con números de los datos"
     }}
-  ],
-  "strategic_recommendations": [
-    {{
-      "priority": 1,
-      "recommendation": "Recomendación basada en evidencia estadística",
-      "expected_impact": "Impacto esperado con números"
-    }}
-  ],
-  "anomalies": [
-    "Posts o patrones que rompen las reglas estadísticas y posibles explicaciones"
   ]
 }}
 
-Encontrá MÍNIMO 3 patrones ocultos. Sé específico con números y p-values. No des consejos genéricos.
+IMPORTANTE:
+- Generá MÍNIMO 6 findings. Cada uno debe tener datos específicos, no generalidades.
+- severity "critical" = el dashboard miente o hay un problema grave
+- severity "warning" = algo que se puede mejorar con datos
+- severity "insight" = patrón interesante que no es obvio
+- Los findings deben cubrir: outliers, reposts, formato real, largo, menciones, links, keywords, tendencia temporal, impressiones desperdiciadas
+- dashboard_vs_reality debe tener al menos 4 items mostrando métricas que cambian al limpiar datos
 
 Return ONLY valid JSON, no markdown."""
 
@@ -649,19 +855,12 @@ def classify_posts(posts: list[dict], openai_api_key: str, progress_callback=Non
 
 
 def deep_pattern_analysis(posts: list[dict], metrics: dict, openai_api_key: str) -> dict:
-    """Phase 2: Compute statistics in Python, send to GPT for interpretation."""
-    client = OpenAI(api_key=openai_api_key)
+    """Phase 2: Compute statistics in Python, send to GPT for interpretation.
 
-    # Check if we already have cached pattern analysis
-    pattern_cache_path = ANALYSIS_DIR / "pattern_analysis.json"
-    if pattern_cache_path.exists():
-        try:
-            cached = json.loads(pattern_cache_path.read_text(encoding="utf-8"))
-            if cached.get("total_posts") == len(posts):
-                logger.info("Loaded pattern analysis from cache")
-                return cached.get("analysis", {})
-        except Exception:
-            pass
+    Note: File-based caching removed for multi-tenant safety.
+    Caching is handled at the DB level in dashboard.py (per user_id + date range).
+    """
+    client = OpenAI(api_key=openai_api_key)
 
     # ── Compute all statistics in Python ──
     logger.info("Computing deep statistics...")
@@ -673,9 +872,12 @@ def deep_pattern_analysis(posts: list[dict], metrics: dict, openai_api_key: str)
     def post_summary(p, rank=None):
         prefix = f"#{rank} " if rank else ""
         date = p["date"].strftime("%Y-%m-%d %a %H:%M") if hasattr(p.get("date"), "strftime") else str(p.get("date", ""))
+        repost_tag = " [REPOST]" if p.get("is_repost") else ""
+        imp = p.get("impressions", 0)
+        imp_str = f" imp={imp}" if imp > 0 else ""
         return (
             f"{prefix}[{date}] eng={p.get('engagement',0)} (react={p.get('reactions',0)} "
-            f"comm={p.get('comments',0)}) "
+            f"comm={p.get('comments',0)}{imp_str}){repost_tag} "
             f"type={p.get('content_type','text')} cat={p.get('category','?')} "
             f"len={len(p.get('text',''))} chars\n"
             f"  \"{p.get('text','')[:150]}\""
@@ -690,8 +892,6 @@ def deep_pattern_analysis(posts: list[dict], metrics: dict, openai_api_key: str)
     if dates:
         date_range = f"{min(dates).strftime('%Y-%m-%d')} a {max(dates).strftime('%Y-%m-%d')}"
 
-    segment = deep_stats.get("segment", {})
-
     # Format stats for prompt
     def _fmt_json(obj):
         return json.dumps(obj, ensure_ascii=False, indent=2)
@@ -699,16 +899,21 @@ def deep_pattern_analysis(posts: list[dict], metrics: dict, openai_api_key: str)
     prompt = PATTERN_ANALYSIS_PROMPT.format(
         total_posts=len(posts),
         date_range=date_range,
-        originals=segment.get("originals", len(posts)),
-        reposts=segment.get("reposts", 0),
-        repost_ratio=segment.get("repost_ratio", 0),
+        segment_stats=_fmt_json(deep_stats.get("segment", {})),
         outlier_stats=_fmt_json(deep_stats.get("outliers", {})),
+        format_stats_all=_fmt_json(deep_stats.get("format_stats_all", {})),
         format_stats=_fmt_json(deep_stats.get("format_stats", {})),
+        format_stats_clean=_fmt_json(deep_stats.get("format_stats_clean", {})),
         format_comparisons=_fmt_json(deep_stats.get("format_comparisons", [])),
         correlations=_fmt_json(deep_stats.get("correlations", [])),
+        length_buckets=_fmt_json(deep_stats.get("length_buckets_clean", {})),
+        link_analysis=_fmt_json(deep_stats.get("link_analysis", {})),
+        mention_buckets=_fmt_json(deep_stats.get("mention_buckets", {})),
         keyword_analysis=_fmt_json(deep_stats.get("keyword_analysis", {})),
         temporal_stats=_fmt_json(deep_stats.get("temporal", {})),
         impression_stats=_fmt_json(deep_stats.get("impression_efficiency", {})),
+        comment_ratios=_fmt_json(deep_stats.get("comment_ratio_by_type", {})),
+        top_10_threshold=deep_stats.get("top_10_threshold", 0),
         top_posts=top_posts,
         bottom_posts=bottom_posts,
     )
@@ -720,7 +925,7 @@ def deep_pattern_analysis(posts: list[dict], metrics: dict, openai_api_key: str)
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
-            max_tokens=4000,
+            max_tokens=6000,
         )
         raw = response.choices[0].message.content.strip()
         if raw.startswith("```"):
@@ -730,12 +935,7 @@ def deep_pattern_analysis(posts: list[dict], metrics: dict, openai_api_key: str)
         # Attach raw stats so frontend can display them directly
         analysis["_raw_stats"] = deep_stats
 
-        # Cache it
-        pattern_cache_path.write_text(
-            json.dumps({"total_posts": len(posts), "analysis": analysis}, ensure_ascii=False, indent=2),
-            encoding="utf-8"
-        )
-        logger.info("Pattern analysis complete and cached")
+        logger.info("Pattern analysis complete")
         return analysis
 
     except Exception as e:
