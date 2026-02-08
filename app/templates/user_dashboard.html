@@ -141,11 +141,13 @@
                 <canvas id="chart-month"></canvas>
             </div>
             <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                <h3 class="text-sm font-medium text-gray-300 mb-3">Best Day to Post</h3>
+                <h3 class="text-sm font-medium text-gray-300 mb-1">Best Day to Post</h3>
+                <p id="insight-day" class="text-xs text-emerald-400/70 mb-3 hidden"></p>
                 <canvas id="chart-day"></canvas>
             </div>
             <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                <h3 class="text-sm font-medium text-gray-300 mb-3">Best Hour to Post</h3>
+                <h3 class="text-sm font-medium text-gray-300 mb-1">Best Hour to Post</h3>
+                <p id="insight-hour" class="text-xs text-emerald-400/70 mb-3 hidden"></p>
                 <canvas id="chart-hour"></canvas>
             </div>
             <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
@@ -153,7 +155,8 @@
                 <canvas id="chart-content-type"></canvas>
             </div>
             <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                <h3 class="text-sm font-medium text-gray-300 mb-3">Avg Engagement by Content Type</h3>
+                <h3 class="text-sm font-medium text-gray-300 mb-1">Avg Engagement by Content Type</h3>
+                <p id="insight-eng-type" class="text-xs text-emerald-400/70 mb-3 hidden"></p>
                 <canvas id="chart-eng-type"></canvas>
             </div>
             <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
@@ -161,7 +164,8 @@
                 <canvas id="chart-image-eng"></canvas>
             </div>
             <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
-                <h3 class="text-sm font-medium text-gray-300 mb-3">Post Length vs Engagement</h3>
+                <h3 class="text-sm font-medium text-gray-300 mb-1">Post Length vs Engagement</h3>
+                <p id="insight-length" class="text-xs text-emerald-400/70 mb-3 hidden"></p>
                 <canvas id="chart-scatter"></canvas>
             </div>
             <div class="bg-gray-900 rounded-xl p-5 border border-gray-800">
@@ -226,11 +230,11 @@
             <!-- Key Metrics (contradicting dashboard) -->
             <div id="key-metrics-section" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
 
-            <!-- Tabs: Hallazgos | Dashboard vs Realidad | Formula -->
+            <!-- Tabs: Hallazgos | Números reales | Fórmula -->
             <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
                 <div class="flex border-b border-gray-800">
                     <button onclick="setAnalysisTab('findings')" id="tab-findings" class="flex-1 py-3 px-4 text-sm font-medium text-white bg-gray-800 transition">Hallazgos</button>
-                    <button onclick="setAnalysisTab('reality')" id="tab-reality" class="flex-1 py-3 px-4 text-sm font-medium text-gray-400 hover:text-white transition">Dashboard vs Realidad</button>
+                    <button onclick="setAnalysisTab('reality')" id="tab-reality" class="flex-1 py-3 px-4 text-sm font-medium text-gray-400 hover:text-white transition">N&uacute;meros reales</button>
                     <button onclick="setAnalysisTab('formula')" id="tab-formula" class="flex-1 py-3 px-4 text-sm font-medium text-gray-400 hover:text-white transition">F&oacute;rmula &Oacute;ptima</button>
                 </div>
                 <div class="p-5">
@@ -239,13 +243,17 @@
                         <div id="severity-badges" class="flex gap-2 mb-4"></div>
                         <div id="findings-list" class="space-y-3"></div>
                     </div>
-                    <!-- Dashboard vs Reality tab -->
-                    <div id="panel-reality" class="hidden">
-                        <div id="reality-list" class="space-y-3"></div>
+                    <!-- Números reales tab -->
+                    <div id="panel-reality" class="hidden space-y-6">
+                        <div id="real-format-section" class="bg-gray-800/40 rounded-lg p-5 border border-gray-700/30"></div>
+                        <div id="real-length-section" class="bg-gray-800/40 rounded-lg p-5 border border-gray-700/30"></div>
+                        <div id="real-correlations-section" class="bg-gray-800/40 rounded-lg p-5 border border-gray-700/30"></div>
+                        <div id="real-monthly-section" class="bg-gray-800/40 rounded-lg p-5 border border-gray-700/30"></div>
                     </div>
                     <!-- Formula tab -->
                     <div id="panel-formula" class="hidden space-y-4">
                         <div id="formula-card" class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg p-6 border border-gray-700"></div>
+                        <div id="dashboard-vs-reality" class="space-y-3"></div>
                         <div id="top-actions" class="space-y-3"></div>
                     </div>
                 </div>
@@ -1005,23 +1013,8 @@ function renderPatternAnalysis(pa) {
         if (pa.findings.length > 0) toggleFinding(pa.findings[0].id);
     }
 
-    // ── Dashboard vs Reality tab ──
-    const realityList = document.getElementById('reality-list');
-    realityList.innerHTML = '';
-    if (pa.dashboard_vs_reality && pa.dashboard_vs_reality.length > 0) {
-        pa.dashboard_vs_reality.forEach(item => {
-            realityList.innerHTML += `
-                <div class="flex gap-3 items-start bg-gray-800/40 rounded-lg p-4 border border-gray-700/30">
-                    <span class="text-red-400 shrink-0 text-lg mt-0.5">&times;</span>
-                    <div class="flex-1">
-                        <p class="text-sm text-gray-500 line-through">${item.dashboard_says}</p>
-                        <p class="text-sm text-emerald-400 mt-1">&rarr; ${item.reality}</p>
-                    </div>
-                </div>`;
-        });
-    } else {
-        realityList.innerHTML = '<p class="text-gray-500 text-sm">No hay comparaciones disponibles.</p>';
-    }
+    // ── Números reales tab ──
+    _renderRealNumbers(pa._raw_stats);
 
     // ── Formula tab ──
     const formulaCard = document.getElementById('formula-card');
@@ -1077,34 +1070,218 @@ function renderPatternAnalysis(pa) {
             </div>`;
     }
 
-    // ── Correlations table (from raw stats) ──
-    const rawCorr = pa._raw_stats?.correlations;
-    if (rawCorr && rawCorr.filter(c => c.significant).length > 0) {
-        const sigCorr = rawCorr.filter(c => c.significant);
-        const corrSection = document.createElement('div');
-        corrSection.className = 'bg-gray-900 rounded-xl p-5 border border-gray-800';
-        corrSection.innerHTML = `
-            <h3 class="text-sm font-medium text-indigo-400 mb-3">Correlaciones Spearman (p &lt; 0.05)</h3>
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead><tr class="text-gray-400 border-b border-gray-800">
-                        <th class="text-left py-2 pr-4">Variable</th>
-                        <th class="text-right py-2 pr-4">rho</th>
-                        <th class="text-right py-2 pr-4">p-value</th>
-                        <th class="text-left py-2">Direccion</th>
-                    </tr></thead>
-                    <tbody>${sigCorr.map(c => `
-                        <tr class="border-b border-gray-800/50">
-                            <td class="py-2 pr-4 font-medium text-gray-200">${c.feature}</td>
-                            <td class="py-2 pr-4 text-right ${c.rho > 0 ? 'text-emerald-400' : 'text-red-400'}">${c.rho}</td>
-                            <td class="py-2 pr-4 text-right text-gray-400">${c.p_value}</td>
-                            <td class="py-2 text-gray-300">${c.direction === 'positive' ? '&uarr; Positiva' : '&darr; Negativa'}</td>
-                        </tr>
-                    `).join('')}</tbody>
-                </table>
-            </div>
-        `;
-        document.getElementById('pattern-section').appendChild(corrSection);
+    // ── Dashboard vs Reality (in formula tab) ──
+    const dvrSection = document.getElementById('dashboard-vs-reality');
+    if (dvrSection && pa.dashboard_vs_reality && pa.dashboard_vs_reality.length > 0) {
+        dvrSection.innerHTML = `
+            <div class="bg-amber-900/20 rounded-lg p-4 border border-amber-800/30">
+                <h4 class="text-sm font-bold text-amber-300 mb-3">Lo que el dashboard dijo vs la realidad</h4>
+                <div class="space-y-2 text-xs">
+                    ${pa.dashboard_vs_reality.map(item => `
+                        <div class="flex gap-2">
+                            <span class="text-red-400 shrink-0">&times;</span>
+                            <span class="text-gray-500 line-through">${item.dashboard_says}</span>
+                            <span class="text-emerald-400">&rarr; ${item.reality}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>`;
+    }
+
+    // ── Chart card insights ──
+    _renderChartInsights(pa._raw_stats);
+}
+
+// ── Comparison bar helper ──
+function _comparisonBar(label, value, maxValue, color, annotation) {
+    const width = maxValue > 0 ? Math.min((value / maxValue) * 100, 100) : 0;
+    return '<div class="mb-2">' +
+        '<div class="flex justify-between text-xs mb-1">' +
+            '<span class="text-gray-400">' + label + '</span>' +
+            '<span class="font-mono font-bold text-gray-200">' + value + '</span>' +
+        '</div>' +
+        '<div class="h-5 bg-gray-700/50 rounded-full overflow-hidden relative">' +
+            '<div class="h-full ' + color + ' rounded-full transition-all duration-500" style="width: ' + width + '%"></div>' +
+            (annotation ? '<span class="absolute right-2 top-0.5 text-[10px] text-gray-400">' + annotation + '</span>' : '') +
+        '</div>' +
+    '</div>';
+}
+
+// ── Números reales rendering ──
+function _renderRealNumbers(rawStats) {
+    if (!rawStats) return;
+
+    // Format comparison (originals only, no outlier)
+    const formatSection = document.getElementById('real-format-section');
+    const fmtClean = rawStats.format_stats_clean;
+    if (fmtClean && Object.keys(fmtClean).length > 0) {
+        const maxVal = Math.max(...Object.values(fmtClean).map(f => f.mean || 0), 1);
+        const colorMap = { image: 'bg-blue-500', video: 'bg-purple-500', carousel: 'bg-amber-500', text: 'bg-gray-500', article: 'bg-emerald-500' };
+        const sorted = Object.entries(fmtClean).sort((a, b) => (b[1].mean || 0) - (a[1].mean || 0));
+        const bestFormat = sorted[0] ? sorted[0][0] : '';
+        formatSection.innerHTML =
+            '<h3 class="text-sm font-bold text-gray-200 mb-3">Engagement por tipo (solo originales, sin outlier)</h3>' +
+            sorted.map(function(entry) {
+                return _comparisonBar(
+                    entry[0] + ' (n=' + entry[1].n + ')', entry[1].mean, maxVal,
+                    colorMap[entry[0]] || 'bg-gray-500',
+                    entry[0] === bestFormat ? 'MVP' : ''
+                );
+            }).join('') +
+            '<p class="text-xs text-gray-500 mt-2 italic">El dashboard incluye reposts + outliers &mdash; los n&uacute;meros pueden ser muy diferentes</p>';
+    } else {
+        formatSection.classList.add('hidden');
+    }
+
+    // Length buckets
+    const lengthSection = document.getElementById('real-length-section');
+    const lenBuckets = rawStats.length_buckets_clean;
+    if (lenBuckets && Object.keys(lenBuckets).length > 0) {
+        const maxLen = Math.max(...Object.values(lenBuckets).map(b => b.mean || 0), 1);
+        const entries = Object.entries(lenBuckets);
+        const bestBucket = entries.reduce(function(a, b) { return (b[1].mean || 0) > (a[1].mean || 0) ? b : a; });
+        lengthSection.innerHTML =
+            '<h3 class="text-sm font-bold text-gray-200 mb-3">Engagement por largo de texto (sin outlier)</h3>' +
+            entries.map(function(entry) {
+                return _comparisonBar(
+                    entry[0] + ' chars (n=' + entry[1].n + ')', entry[1].mean, maxLen,
+                    entry[1].mean >= maxLen * 0.8 ? 'bg-emerald-500' : entry[1].mean >= maxLen * 0.5 ? 'bg-blue-400' : 'bg-gray-500',
+                    entry[0] === bestBucket[0] ? 'SWEET SPOT' : ''
+                );
+            }).join('');
+    } else {
+        lengthSection.classList.add('hidden');
+    }
+
+    // Correlations
+    const corrSection = document.getElementById('real-correlations-section');
+    const corrs = rawStats.correlations;
+    if (corrs && corrs.filter(function(c) { return c.significant; }).length > 0) {
+        const sigCorrs = corrs.filter(function(c) { return c.significant; });
+        const featureLabels = {
+            text_length: 'Largo de texto &rarr; Engagement',
+            num_mentions: 'Menciones &rarr; Engagement',
+            num_hashtags: 'Hashtags &rarr; Engagement',
+            num_paragraphs: 'P&aacute;rrafos &rarr; Engagement',
+            avg_paragraph_length: 'P&aacute;rrafo promedio &rarr; Eng',
+            has_link: 'Tiene link &rarr; Engagement',
+            has_emoji: 'Tiene emoji &rarr; Engagement',
+            has_cta: 'Tiene CTA &rarr; Engagement',
+            hour_posted: 'Hora publicaci&oacute;n &rarr; Engagement',
+            day_of_week: 'D&iacute;a semana &rarr; Engagement',
+        };
+        corrSection.innerHTML =
+            '<h3 class="text-sm font-bold text-gray-200 mb-3">Variables con correlaci&oacute;n significativa</h3>' +
+            '<div class="space-y-2">' +
+            sigCorrs.map(function(c) {
+                var absRho = Math.abs(c.rho);
+                var label = featureLabels[c.feature] || c.feature;
+                return '<div class="flex items-center gap-3 text-xs">' +
+                    '<div class="w-16 h-2 bg-gray-700/50 rounded-full overflow-hidden shrink-0">' +
+                        '<div class="h-full ' + (c.rho > 0 ? 'bg-emerald-500' : 'bg-red-400') + ' rounded-full" style="width: ' + (absRho * 100) + '%"></div>' +
+                    '</div>' +
+                    '<span class="font-mono font-bold w-12 shrink-0 ' + (c.rho > 0 ? 'text-emerald-400' : 'text-red-400') + '">' + c.rho.toFixed(2) + '</span>' +
+                    '<span class="text-gray-300 flex-1">' + label + '</span>' +
+                    '<span class="text-gray-500 shrink-0">p=' + c.p_value + '</span>' +
+                '</div>';
+            }).join('') +
+            '</div>';
+    } else {
+        corrSection.classList.add('hidden');
+    }
+
+    // Monthly trend
+    const monthlySection = document.getElementById('real-monthly-section');
+    const monthlyStats = rawStats.temporal ? rawStats.temporal.monthly_stats : null;
+    if (monthlyStats && Object.keys(monthlyStats).length > 0) {
+        const entries = Object.entries(monthlyStats);
+        const maxMedian = Math.max(...entries.map(function(e) { return e[1].median || 0; }), 1);
+        const monthNames = { '01': 'Ene', '02': 'Feb', '03': 'Mar', '04': 'Abr', '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Ago', '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dic' };
+        const tau = rawStats.temporal.kendall_tau;
+        const dir = rawStats.temporal.direction;
+        const trendInfo = tau !== undefined
+            ? 'Kendall tau = ' + tau + ' (' + (dir === 'growing' ? 'tendencia positiva' : dir === 'declining' ? 'tendencia negativa' : 'sin tendencia clara') + ')'
+            : '';
+        const pctChange = rawStats.temporal.pct_change || 0;
+        monthlySection.innerHTML =
+            '<h3 class="text-sm font-bold text-gray-200 mb-3">Tendencia mensual (mediana de engagement)</h3>' +
+            '<div class="flex items-end gap-1 h-32">' +
+            entries.map(function(entry, idx) {
+                var month = entry[0], data = entry[1];
+                var monthLabel = monthNames[month.split('-')[1]] || month;
+                var height = maxMedian > 0 ? (data.median / maxMedian) * 100 : 0;
+                var isLast = idx === entries.length - 1;
+                var color = isLast && pctChange < -30 ? 'bg-red-400' : data.median >= maxMedian * 0.7 ? 'bg-emerald-400' : 'bg-blue-400';
+                return '<div class="flex-1 flex flex-col items-center gap-1">' +
+                    '<span class="text-[10px] font-mono text-gray-500">' + data.median + '</span>' +
+                    '<div class="w-full rounded-t ' + color + '" style="height: ' + height + '%"></div>' +
+                    '<span class="text-[10px] text-gray-500">' + monthLabel + '</span>' +
+                '</div>';
+            }).join('') +
+            '</div>' +
+            (trendInfo ? '<p class="text-xs text-gray-500 mt-2 italic">' + trendInfo + '</p>' : '');
+    } else {
+        monthlySection.classList.add('hidden');
+    }
+}
+
+// ── Chart card insights ──
+function _renderChartInsights(rawStats) {
+    if (!rawStats) return;
+
+    // Day insight
+    var dayInsight = document.getElementById('insight-day');
+    if (dayInsight && rawStats.temporal) {
+        if (rawStats.temporal.day_significant === false) {
+            dayInsight.textContent = 'No hay diferencia significativa entre d\u00edas (Kruskal-Wallis p > 0.05) \u2014 public\u00e1 cualquier d\u00eda';
+            dayInsight.classList.remove('hidden');
+        } else if (rawStats.temporal.day_significant === true) {
+            dayInsight.textContent = 'Diferencia significativa entre d\u00edas (p=' + rawStats.temporal.kruskal_wallis_p + ')';
+            dayInsight.classList.remove('hidden');
+        }
+    }
+
+    // Hour insight
+    var hourInsight = document.getElementById('insight-hour');
+    if (hourInsight && rawStats.correlations) {
+        var hourCorr = rawStats.correlations.find(function(c) { return c.feature === 'hour_posted'; });
+        if (hourCorr && !hourCorr.significant) {
+            hourInsight.textContent = 'La hora de publicaci\u00f3n no correlaciona con engagement (p > 0.05)';
+            hourInsight.classList.remove('hidden');
+        } else if (hourCorr && hourCorr.significant) {
+            hourInsight.textContent = 'Correlaci\u00f3n ' + (hourCorr.direction === 'positive' ? 'positiva' : 'negativa') + ' (rho=' + hourCorr.rho + ', p=' + hourCorr.p_value + ')';
+            hourInsight.classList.remove('hidden');
+        }
+    }
+
+    // Engagement by type insight
+    var engTypeInsight = document.getElementById('insight-eng-type');
+    if (engTypeInsight && rawStats.format_stats_clean) {
+        var clean = rawStats.format_stats_clean;
+        var all = rawStats.format_stats_all || {};
+        var cleanEntries = Object.entries(clean).sort(function(a, b) { return (b[1].mean || 0) - (a[1].mean || 0); });
+        var allEntries = Object.entries(all).sort(function(a, b) { return (b[1].mean || 0) - (a[1].mean || 0); });
+        if (cleanEntries.length > 0 && allEntries.length > 0) {
+            var bestClean = cleanEntries[0][0];
+            var bestAll = allEntries[0][0];
+            if (bestClean !== bestAll) {
+                engTypeInsight.textContent = 'Sin outliers ni reposts, ' + bestClean + ' (avg ' + cleanEntries[0][1].mean + ') supera a ' + bestAll + ' \u2014 el dashboard muestra datos contaminados';
+            } else {
+                engTypeInsight.textContent = bestClean + ' es el mejor formato (avg ' + cleanEntries[0][1].mean + ' solo originales sin outlier)';
+            }
+            engTypeInsight.classList.remove('hidden');
+        }
+    }
+
+    // Post length insight
+    var lengthInsight = document.getElementById('insight-length');
+    if (lengthInsight && rawStats.correlations) {
+        var lenCorr = rawStats.correlations.find(function(c) { return c.feature === 'text_length'; });
+        if (lenCorr && lenCorr.significant) {
+            var dir = lenCorr.rho > 0 ? 'm\u00e1s largo = m\u00e1s engagement' : 'm\u00e1s corto = m\u00e1s engagement';
+            lengthInsight.textContent = 'Correlaci\u00f3n ' + (lenCorr.rho > 0 ? 'positiva' : 'negativa') + ' (rho=' + lenCorr.rho + ', p=' + lenCorr.p_value + ') \u2014 ' + dir;
+            lengthInsight.classList.remove('hidden');
+        }
     }
 }
 
