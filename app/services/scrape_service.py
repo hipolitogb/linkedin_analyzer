@@ -81,7 +81,7 @@ async def upsert_posts(db: AsyncSession, rows: list[dict]) -> int:
         existing = result.first()
 
         if existing:
-            # Update engagement metrics only
+            # Update engagement metrics and repost classification
             await db.execute(
                 text("""
                     UPDATE posts SET
@@ -90,6 +90,9 @@ async def upsert_posts(db: AsyncSession, rows: list[dict]) -> int:
                         shares = :shares,
                         engagement = :engagement,
                         impressions = :impressions,
+                        is_repost = :is_repost,
+                        original_author = :original_author,
+                        reshare_comment = :reshare_comment,
                         updated_at = :now
                     WHERE user_id = :user_id AND linkedin_activity_id = :activity_id
                 """),
@@ -99,6 +102,9 @@ async def upsert_posts(db: AsyncSession, rows: list[dict]) -> int:
                     "shares": row["shares"],
                     "engagement": row["engagement"],
                     "impressions": row["impressions"],
+                    "is_repost": row.get("is_repost", False),
+                    "original_author": row.get("original_author", ""),
+                    "reshare_comment": row.get("reshare_comment", ""),
                     "now": datetime.utcnow(),
                     "user_id": row["user_id"],
                     "activity_id": row["linkedin_activity_id"],

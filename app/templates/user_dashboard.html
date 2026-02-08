@@ -65,6 +65,7 @@
         <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
             <p class="text-gray-400 text-xs uppercase tracking-wide">Total Posts</p>
             <p id="stat-total" class="text-2xl font-bold mt-1">0</p>
+            <p id="stat-reposts" class="text-xs text-gray-500 mt-1 hidden"></p>
         </div>
         <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
             <p class="text-gray-400 text-xs uppercase tracking-wide">Total Reactions</p>
@@ -269,6 +270,30 @@
                         </tr>
                     </thead>
                     <tbody id="posts-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Reposts Section -->
+        <div id="reposts-section" class="hidden bg-gray-900 rounded-xl p-5 border border-yellow-800/40 mb-8">
+            <div class="flex items-center gap-2 mb-3">
+                <h3 class="text-sm font-medium text-yellow-400">Reposts</h3>
+                <span id="reposts-count" class="text-xs bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full">0</span>
+                <span class="text-xs text-gray-500 ml-2">Excluidos de las metricas &mdash; datos del autor original</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-gray-400 border-b border-gray-800">
+                            <th class="text-left py-2 pr-4">Date</th>
+                            <th class="text-left py-2 pr-4">Autor Original</th>
+                            <th class="text-left py-2 pr-4 min-w-[300px]">Text</th>
+                            <th class="text-right py-2 pr-4">Reactions</th>
+                            <th class="text-right py-2 pr-4">Comments</th>
+                            <th class="text-right py-2">Engagement</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reposts-body"></tbody>
                 </table>
             </div>
         </div>
@@ -504,6 +529,13 @@ function renderDashboard(m) {
     // Summary
     document.getElementById('summary-cards').classList.remove('hidden');
     document.getElementById('stat-total').textContent = m.total_posts;
+    const repostsEl = document.getElementById('stat-reposts');
+    if (m.total_reposts > 0) {
+        repostsEl.textContent = `${m.total_reposts} repost${m.total_reposts > 1 ? 's' : ''} excluido${m.total_reposts > 1 ? 's' : ''}`;
+        repostsEl.classList.remove('hidden');
+    } else {
+        repostsEl.classList.add('hidden');
+    }
     document.getElementById('stat-reactions').textContent = (m.total_reactions || 0).toLocaleString();
     document.getElementById('stat-comments').textContent = (m.total_comments || 0).toLocaleString();
     document.getElementById('stat-avg-eng').textContent = m.avg_engagement || 0;
@@ -836,6 +868,34 @@ function renderDashboard(m) {
         `;
         tbody.appendChild(tr);
     });
+
+    // Reposts table
+    const repostsList = (m.all_posts || []).filter(p => p.is_repost);
+    const repostsSection = document.getElementById('reposts-section');
+    if (repostsList.length > 0) {
+        repostsSection.classList.remove('hidden');
+        document.getElementById('reposts-count').textContent = repostsList.length;
+        const rbody = document.getElementById('reposts-body');
+        rbody.innerHTML = '';
+        repostsList.sort((a, b) => b.engagement - a.engagement).forEach(p => {
+            const tr = document.createElement('tr');
+            tr.className = 'border-b border-gray-800/50 hover:bg-yellow-900/10';
+            const textCell = p.url
+                ? `<a href="${p.url}" target="_blank" rel="noopener" class="text-blue-400 hover:text-blue-300 hover:underline">${p.text}</a>`
+                : p.text;
+            tr.innerHTML = `
+                <td class="py-2 pr-4 whitespace-nowrap">${p.date}</td>
+                <td class="py-2 pr-4 text-yellow-400">${p.original_author || 'Desconocido'}</td>
+                <td class="py-2 pr-4 text-gray-300">${textCell}</td>
+                <td class="py-2 pr-4 text-right">${p.reactions}</td>
+                <td class="py-2 pr-4 text-right">${p.comments}</td>
+                <td class="py-2 text-right font-medium text-gray-400">${p.engagement}</td>
+            `;
+            rbody.appendChild(tr);
+        });
+    } else {
+        repostsSection.classList.add('hidden');
+    }
 }
 
 let _currentAnalysisTab = 'findings';
