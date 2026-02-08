@@ -240,11 +240,24 @@
                     <p class="text-gray-400 text-sm mb-4 max-w-md mx-auto">
                         Usa el boton <strong class="text-purple-400">"Analizar con IA"</strong> para obtener hallazgos contrarios, patrones ocultos y recomendaciones personalizadas basadas en tus datos.
                     </p>
-                    <button onclick="document.getElementById('btn-ai-analyze').click()"
-                        class="inline-flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded-lg transition">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                        Analizar con IA
+                    <button id="btn-cta-analyze" onclick="runAIAnalysis()"
+                        class="inline-flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-purple-600">
+                        <svg id="cta-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        <span id="cta-ai-label">Analizar con IA</span>
+                        <span id="cta-ai-loading" class="hidden items-center gap-2">
+                            <span class="loader" style="width:14px;height:14px;border-width:2px;vertical-align:middle;"></span>
+                            Analizando...
+                        </span>
                     </button>
+                    <div id="cta-progress" class="hidden mt-4 max-w-sm mx-auto">
+                        <div class="flex items-center justify-center gap-3 text-sm text-gray-400">
+                            <span class="loader"></span>
+                            <span id="cta-progress-text">Analizando...</span>
+                        </div>
+                        <div class="w-full bg-gray-800 rounded-full h-2 mt-2">
+                            <div id="cta-progress-bar" class="bg-blue-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
             <!-- Key Metrics (contradicting dashboard) -->
@@ -407,18 +420,52 @@ async function loadMetrics() {
     }
 }
 
+function setAILoading(loading, progressText) {
+    // Top button
+    const btn = document.getElementById('btn-ai-analyze');
+    btn.disabled = loading;
+    document.getElementById('btn-ai-label').classList.toggle('hidden', loading);
+    document.getElementById('btn-ai-loading').classList.toggle('hidden', !loading);
+    document.getElementById('btn-ai-loading').classList.toggle('inline-flex', loading);
+
+    // CTA button (may not exist if section is hidden)
+    const ctaBtn = document.getElementById('btn-cta-analyze');
+    if (ctaBtn) {
+        ctaBtn.disabled = loading;
+        document.getElementById('cta-icon').classList.toggle('hidden', loading);
+        document.getElementById('cta-ai-label').classList.toggle('hidden', loading);
+        document.getElementById('cta-ai-loading').classList.toggle('hidden', !loading);
+        document.getElementById('cta-ai-loading').classList.toggle('inline-flex', loading);
+        document.getElementById('cta-progress').classList.toggle('hidden', !loading);
+        if (loading && progressText) {
+            document.getElementById('cta-progress-text').textContent = progressText;
+            document.getElementById('cta-progress-bar').style.width = '0%';
+        }
+    }
+
+    // Top progress area
+    document.getElementById('analysis-progress').classList.toggle('hidden', !loading);
+    if (loading && progressText) {
+        document.getElementById('progress-text').textContent = progressText;
+        document.getElementById('progress-bar').style.width = '0%';
+    }
+}
+
+function updateAIProgress(text, pct) {
+    document.getElementById('progress-text').textContent = text;
+    if (pct !== undefined) document.getElementById('progress-bar').style.width = pct + '%';
+    const ctaProgressText = document.getElementById('cta-progress-text');
+    if (ctaProgressText) {
+        ctaProgressText.textContent = text;
+        if (pct !== undefined) document.getElementById('cta-progress-bar').style.width = pct + '%';
+    }
+}
+
 async function runAIAnalysis() {
     const fromDate = document.getElementById('filter-from').value;
     const toDate = document.getElementById('filter-to').value;
 
-    const btn = document.getElementById('btn-ai-analyze');
-    btn.disabled = true;
-    document.getElementById('btn-ai-label').classList.add('hidden');
-    document.getElementById('btn-ai-loading').classList.remove('hidden');
-    document.getElementById('btn-ai-loading').classList.add('inline-flex');
-    document.getElementById('analysis-progress').classList.remove('hidden');
-    document.getElementById('progress-text').textContent = 'Iniciando análisis con IA...';
-    document.getElementById('progress-bar').style.width = '0%';
+    setAILoading(true, 'Iniciando análisis con IA...');
     setFilterStatus('');
 
     try {
@@ -452,20 +499,15 @@ async function runAIAnalysis() {
                         const msg = JSON.parse(payload);
                         if (msg.heartbeat) continue;
                         if (msg.phase) {
-                            document.getElementById('progress-text').textContent = msg.message;
-                            if (msg.phase === 'patterns') {
-                                document.getElementById('progress-bar').style.width = '100%';
-                            }
+                            updateAIProgress(msg.message, msg.phase === 'patterns' ? 100 : undefined);
                         }
                         if (msg.current && msg.total) {
                             const pct = Math.round((msg.current / msg.total) * 100);
-                            document.getElementById('progress-bar').style.width = pct + '%';
-                            document.getElementById('progress-text').textContent =
-                                `Clasificando post ${msg.current}/${msg.total}${msg.cached ? ' (cached)' : ''}...`;
+                            updateAIProgress(`Clasificando post ${msg.current}/${msg.total}${msg.cached ? ' (cached)' : ''}...`, pct);
                         }
                         if (msg.status === 'error' && msg.message) {
                             finalMetrics = null;
-                            document.getElementById('analysis-progress').classList.add('hidden');
+                            setAILoading(false);
                             setFilterStatus(`Error en análisis: ${msg.message}`);
                             console.error('SSE analysis error:', msg.message);
                         }
@@ -476,7 +518,7 @@ async function runAIAnalysis() {
                 }
             }
 
-            document.getElementById('analysis-progress').classList.add('hidden');
+            setAILoading(false);
             if (finalMetrics) {
                 renderDashboard(finalMetrics);
             } else {
@@ -484,7 +526,7 @@ async function runAIAnalysis() {
             }
         } else {
             const data = await res.json();
-            document.getElementById('analysis-progress').classList.add('hidden');
+            setAILoading(false);
             if (data.status === 'ok') {
                 renderDashboard(data.metrics);
                 if (data.cached) setFilterStatus('Resultados desde caché.');
@@ -493,14 +535,9 @@ async function runAIAnalysis() {
             }
         }
     } catch (e) {
-        document.getElementById('analysis-progress').classList.add('hidden');
+        setAILoading(false);
         setFilterStatus(`Error: ${e.message}`);
     }
-
-    btn.disabled = false;
-    document.getElementById('btn-ai-label').classList.remove('hidden');
-    document.getElementById('btn-ai-loading').classList.add('hidden');
-    document.getElementById('btn-ai-loading').classList.remove('inline-flex');
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
