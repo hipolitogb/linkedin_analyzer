@@ -76,6 +76,12 @@ class BrowserViewer {
                     this._emit('error', { message: msg.message || 'No LinkedIn cookies found. Please log in first.' });
                 }
                 break;
+            case 'login_detected':
+                this._emit('login-detected', { encrypted: msg.encrypted });
+                break;
+            case 'login_status':
+                // Still waiting for login, no action needed
+                break;
             case 'profile':
                 if (msg.status === 'ok') {
                     this._emit('profile-extracted', {
@@ -149,6 +155,12 @@ class BrowserViewer {
     extractProfile() {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify({ type: 'extract_profile' }));
+        }
+    }
+
+    checkLogin() {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({ type: 'check_login' }));
         }
     }
 
