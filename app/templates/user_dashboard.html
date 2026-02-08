@@ -454,6 +454,12 @@ async function runAIAnalysis() {
                             document.getElementById('progress-text').textContent =
                                 `Clasificando post ${msg.current}/${msg.total}${msg.cached ? ' (cached)' : ''}...`;
                         }
+                        if (msg.status === 'error' && msg.message) {
+                            finalMetrics = null;
+                            document.getElementById('analysis-progress').classList.add('hidden');
+                            setFilterStatus(`Error en análisis: ${msg.message}`);
+                            console.error('SSE analysis error:', msg.message);
+                        }
                         if (msg.status === 'ok' && msg.metrics) {
                             finalMetrics = msg.metrics;
                         }

@@ -6,6 +6,7 @@ import logging
 import os
 from datetime import datetime
 
+import numpy as np
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -18,6 +19,18 @@ from app.database import get_db
 from app.models import AnalysisResult, Post, ScrapeSession, User
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_json(obj) -> str:
+    """JSON-serialize with numpy type support."""
+    class _Enc(json.JSONEncoder):
+        def default(self, o):
+            if isinstance(o, (np.bool_, np.integer, np.floating)):
+                return o.item()
+            if isinstance(o, np.ndarray):
+                return o.tolist()
+            return super().default(o)
+    return json.dumps(obj, ensure_ascii=False, cls=_Enc)
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -203,82 +216,88 @@ async def analyze_posts(
             except Exception:
                 pass
 
-        # Phase 1: Classify
-        yield f"data: {json.dumps({'phase': 'classify', 'message': 'Fase 1: Clasificando posts...'})}\n\n"
-
-        classify_task = loop.run_in_executor(
-            None, classify_posts, post_dicts, openai_api_key, progress_cb
-        )
-
-        done = False
-        while not done:
-            try:
-                msg = await asyncio.wait_for(progress_queue.get(), timeout=1.0)
-                yield f"data: {json.dumps(msg)}\n\n"
-                if msg["current"] >= msg["total"]:
-                    done = True
-            except asyncio.TimeoutError:
-                if classify_task.done():
-                    done = True
-                else:
-                    yield f"data: {json.dumps({'heartbeat': True})}\n\n"
-
-        classified = await classify_task
-
-        # Save classifications back to DB
         try:
-            async with db.begin_nested():
-                for p in classified:
-                    aid = p.get("activity_id", "")
-                    post_id = post_id_map.get(aid)
-                    if post_id:
-                        await db.execute(
-                            update(Post).where(Post.id == post_id).values(
-                                category=p.get("category"),
-                                sentiment=p.get("sentiment"),
-                                topics=p.get("topics"),
-                                image_type=p.get("image_type"),
-                            )
-                        )
-                await db.flush()
-        except Exception as e:
-            logger.warning(f"Failed to save classifications to DB: {e}")
+            # Phase 1: Classify
+            yield f"data: {json.dumps({'phase': 'classify', 'message': 'Fase 1: Clasificando posts...'})}\n\n"
 
-        # Compute metrics
-        metrics = compute_metrics(classified)
-
-        # Phase 2: Deep pattern analysis
-        yield f"data: {json.dumps({'phase': 'patterns', 'message': 'Fase 2: Analizando patrones...'})}\n\n"
-
-        pattern_task = loop.run_in_executor(
-            None, deep_pattern_analysis, classified, metrics, openai_api_key
-        )
-
-        while not pattern_task.done():
-            await asyncio.sleep(1)
-            yield f"data: {json.dumps({'heartbeat': True})}\n\n"
-
-        pattern_results = await pattern_task
-        metrics["pattern_analysis"] = pattern_results
-
-        # Cache the complete analysis
-        try:
-            analysis = AnalysisResult(
-                user_id=user.id,
-                analysis_type="full_dashboard",
-                from_date=from_dt_cache,
-                to_date=to_dt_cache,
-                post_count=len(classified),
-                result_data=metrics,
-                created_at=datetime.utcnow(),
+            classify_task = loop.run_in_executor(
+                None, classify_posts, post_dicts, openai_api_key, progress_cb
             )
-            db.add(analysis)
-            await db.flush()
-        except Exception as e:
-            logger.warning(f"Failed to cache analysis: {e}")
 
-        yield f"data: {json.dumps({'status': 'ok', 'metrics': metrics})}\n\n"
-        yield "data: [DONE]\n\n"
+            done = False
+            while not done:
+                try:
+                    msg = await asyncio.wait_for(progress_queue.get(), timeout=1.0)
+                    yield f"data: {json.dumps(msg)}\n\n"
+                    if msg["current"] >= msg["total"]:
+                        done = True
+                except asyncio.TimeoutError:
+                    if classify_task.done():
+                        done = True
+                    else:
+                        yield f"data: {json.dumps({'heartbeat': True})}\n\n"
+
+            classified = await classify_task
+
+            # Save classifications back to DB
+            try:
+                async with db.begin_nested():
+                    for p in classified:
+                        aid = p.get("activity_id", "")
+                        post_id = post_id_map.get(aid)
+                        if post_id:
+                            await db.execute(
+                                update(Post).where(Post.id == post_id).values(
+                                    category=p.get("category"),
+                                    sentiment=p.get("sentiment"),
+                                    topics=p.get("topics"),
+                                    image_type=p.get("image_type"),
+                                )
+                            )
+                    await db.flush()
+            except Exception as e:
+                logger.warning(f"Failed to save classifications to DB: {e}")
+
+            # Compute metrics
+            metrics = compute_metrics(classified)
+
+            # Phase 2: Deep pattern analysis
+            yield f"data: {json.dumps({'phase': 'patterns', 'message': 'Fase 2: Analizando patrones...'})}\n\n"
+
+            pattern_task = loop.run_in_executor(
+                None, deep_pattern_analysis, classified, metrics, openai_api_key
+            )
+
+            while not pattern_task.done():
+                await asyncio.sleep(1)
+                yield f"data: {json.dumps({'heartbeat': True})}\n\n"
+
+            pattern_results = await pattern_task
+            metrics["pattern_analysis"] = pattern_results
+
+            # Cache the complete analysis
+            try:
+                analysis = AnalysisResult(
+                    user_id=user.id,
+                    analysis_type="full_dashboard",
+                    from_date=from_dt_cache,
+                    to_date=to_dt_cache,
+                    post_count=len(classified),
+                    result_data=metrics,
+                    created_at=datetime.utcnow(),
+                )
+                db.add(analysis)
+                await db.flush()
+            except Exception as e:
+                logger.warning(f"Failed to cache analysis: {e}")
+
+            yield f"data: {_safe_json({'status': 'ok', 'metrics': metrics})}\n\n"
+            yield "data: [DONE]\n\n"
+
+        except Exception as e:
+            logger.error(f"SSE stream error: {e}", exc_info=True)
+            yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
+            yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

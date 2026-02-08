@@ -258,8 +258,8 @@ def _compute_deep_stats(posts: list[dict]) -> dict:
                         "a": a_name, "b": b_name,
                         "u_stat": round(float(stat), 1),
                         "p_value": round(float(pval), 4),
-                        "significant": pval < 0.05,
-                        "higher": a_name if np.median(a_vals) > np.median(b_vals) else b_name,
+                        "significant": bool(pval < 0.05),
+                        "higher": a_name if float(np.median(a_vals)) > float(np.median(b_vals)) else b_name,
                     })
                 except Exception:
                     pass
@@ -305,7 +305,7 @@ def _compute_deep_stats(posts: list[dict]) -> dict:
                         "feature": feat_name,
                         "rho": round(float(rho), 3),
                         "p_value": round(float(pval), 4),
-                        "significant": pval < 0.05,
+                        "significant": bool(pval < 0.05),
                         "direction": "positive" if rho > 0 else "negative",
                     })
             except Exception:
@@ -464,7 +464,7 @@ def _compute_deep_stats(posts: list[dict]) -> dict:
             tau, pval = sp_stats.kendalltau(range(len(medians_list)), medians_list)
             temporal["kendall_tau"] = round(float(tau), 3)
             temporal["kendall_p"] = round(float(pval), 4)
-            temporal["direction"] = "growing" if tau > 0 and pval < 0.05 else "declining" if tau < 0 and pval < 0.05 else "stable"
+            temporal["direction"] = "growing" if float(tau) > 0 and float(pval) < 0.05 else "declining" if float(tau) < 0 and float(pval) < 0.05 else "stable"
         except Exception:
             temporal["direction"] = "unknown"
 
@@ -493,7 +493,7 @@ def _compute_deep_stats(posts: list[dict]) -> dict:
                 h_stat, pval = sp_stats.kruskal(*groups_with_data)
                 temporal["kruskal_wallis_h"] = round(float(h_stat), 2)
                 temporal["kruskal_wallis_p"] = round(float(pval), 4)
-                temporal["day_significant"] = pval < 0.05
+                temporal["day_significant"] = bool(pval < 0.05)
             except Exception:
                 temporal["day_significant"] = False
         else:
@@ -893,8 +893,16 @@ def deep_pattern_analysis(posts: list[dict], metrics: dict, openai_api_key: str)
         date_range = f"{min(dates).strftime('%Y-%m-%d')} a {max(dates).strftime('%Y-%m-%d')}"
 
     # Format stats for prompt
+    class _NumpyEncoder(json.JSONEncoder):
+        def default(self, obj):
+            if isinstance(obj, (np.bool_, np.integer, np.floating)):
+                return obj.item()
+            if isinstance(obj, np.ndarray):
+                return obj.tolist()
+            return super().default(obj)
+
     def _fmt_json(obj):
-        return json.dumps(obj, ensure_ascii=False, indent=2)
+        return json.dumps(obj, ensure_ascii=False, indent=2, cls=_NumpyEncoder)
 
     prompt = PATTERN_ANALYSIS_PROMPT.format(
         total_posts=len(posts),
